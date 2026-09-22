@@ -1,0 +1,96 @@
+{
+  "name": "sf-tecnologias-desktop",
+  "version": "0.1.0-beta",
+  "description": "SF Tecnologias — cliente desktop BETA",
+  "main": "main.js",
+  "author": "SF Tecnologias",
+  "license": "ISC",
+  "type": "commonjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "prod": "cross-env NODE_ENV=production electron .",
+    "publish:api": "powershell -ExecutionPolicy Bypass -File ../backend/SF.Tecnologias.Api/publish-self-contained.ps1",
+    "build:beta": "npm run publish:api && npm run build --prefix ../frontend/sf-tecnologias-web && electron-builder --win portable nsis --x64",
+    "start:api": "dotnet run --project ../backend/SF.Tecnologias.Api/SF.Tecnologias.Api.csproj --environment Development --no-launch-profile --urls http://localhost:5000"
+  },
+  "keywords": [],
+  "devDependencies": {
+    "cross-env": "^7.0.3",
+    "electron": "^44.4.3",
+    "electron-builder": "^26.0.12",
+    "graceful-fs": "^4.2.11"
+  },
+  "build": {
+    "appId": "br.com.sftecnologias.desktop.beta",
+    "productName": "SF Tecnologias BETA",
+    "copyright": "Copyright © SF Tecnologias",
+    "directories": {
+      "output": "../../dist/release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "version.json"
+    ],
+    "extraResources": [
+      {
+        "from": "../frontend/sf-tecnologias-web/dist",
+        "to": "renderer"
+      },
+      {
+        "from": "../../dist/api",
+        "to": "api",
+        "filter": [
+          "**/*.exe",
+          "**/*.json",
+          "!**/*.pdb",
+          "!**/*.db",
+          "!**/*.db-*",
+          "!**/appsettings.Development.json",
+          "!**/web.config"
+        ]
+      },
+      {
+        "from": "../../dist/updater",
+        "to": "updater",
+        "filter": [
+          "**/*.exe",
+          "**/*.json",
+          "!**/*.pdb"
+        ]
+      }
+    ],
+    "asar": false,
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "SF-Tecnologias-BETA-${version}-${arch}.${ext}"
+    },
+    "portable": {
+      "artifactName": "SF-Tecnologias-BETA-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "SF Tecnologias BETA",
+      "artifactName": "SF-Tecnologias-BETA-${version}-Setup.${ext}"
+    }
+  }
+}

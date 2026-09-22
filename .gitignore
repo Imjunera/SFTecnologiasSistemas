@@ -1,0 +1,69 @@
+# ============================================
+# SF Tecnologias - .gitignore
+# ============================================
+
+# ----- Build outputs -----
+**/bin/
+**/obj/
+**/dist/
+**/release/
+*.exe
+*.dll
+*.pdb
+*.nupkg
+
+# ----- Dependencies -----
+**/node_modules/
+**/packages/
+
+# ----- IDE / Editor -----
+.vscode/
+.idea/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# ----- OS files -----
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ----- Logs -----
+*.log
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ----- Temp files -----
+*.tmp
+*.tmp.*
+*.bak
+*.swp
+*~
+
+# ----- Electron -----
+src/desktop/release/
+
+# ----- Graphify (generated) -----
+graphify-out/
+
+# ----- SF Tecnologias agents (dev tools only) -----
+SF Tecnologias/.agents/
+
+# ----- Test artifacts -----
+test*.txt
+
+# ----- Environment / secrets -----
+.env
+.env.*
+!.env.example
+appsettings.Development.json
+appsettings.Local.json
+
+# ----- Root-level test/legacy files -----
+index.html
+main.js
+prompot.txt
