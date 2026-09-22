@@ -268,10 +268,7 @@ class Program
 
         try
         {
-            using var client = new HttpClient();
-            client.Timeout = TimeSpan.FromSeconds(30);
-
-            var json = await client.GetStringAsync(manifestUrl);
+            var json = await DownloadStringAsync(manifestUrl);
             return JsonSerializer.Deserialize<UpdateManifest>(json, new JsonSerializerOptions
             {
                 PropertyNameCaseInsensitive = true
@@ -282,6 +279,32 @@ class Program
             Log($"ERRO ao baixar manifesto: {ex.Message}");
             return null;
         }
+    }
+
+    static async Task<string> DownloadStringAsync(string url)
+    {
+        if (url.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+        {
+            var path = url.Replace("file:///", "").Replace("file://", "");
+            path = Uri.UnescapeDataString(path);
+            return await File.ReadAllTextAsync(path);
+        }
+        using var client = new HttpClient();
+        client.Timeout = TimeSpan.FromSeconds(30);
+        return await client.GetStringAsync(url);
+    }
+
+    static async Task<byte[]> DownloadBytesAsync(string url)
+    {
+        if (url.StartsWith("file://", StringComparison.OrdinalIgnoreCase))
+        {
+            var path = url.Replace("file:///", "").Replace("file://", "");
+            path = Uri.UnescapeDataString(path);
+            return await File.ReadAllBytesAsync(path);
+        }
+        using var client = new HttpClient();
+        client.Timeout = TimeSpan.FromMinutes(10);
+        return await client.GetByteArrayAsync(url);
     }
 
     static bool ValidateVersionCompatibility(string currentVersion, UpdateManifest manifest)
@@ -373,13 +396,7 @@ class Program
             var fileName = $"{name}-{component.Version}.zip";
             var filePath = Path.Combine(UpdatesTempDir, fileName);
 
-            using var client = new HttpClient();
-            client.Timeout = TimeSpan.FromMinutes(10);
-
-            var response = await client.GetAsync(component.PackageUrl);
-            response.EnsureSuccessStatusCode();
-
-            var bytes = await response.Content.ReadAsByteArrayAsync();
+            var bytes = await DownloadBytesAsync(component.PackageUrl);
             await File.WriteAllBytesAsync(filePath, bytes);
 
             Log($"Pacote {name} baixado: {filePath} ({bytes.Length} bytes)");
