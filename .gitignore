@@ -55,6 +55,9 @@ SF Tecnologias/.agents/
 
 # ----- Test artifacts -----
 test*.txt
+update-packages/
+real-update-test/
+test-update/
 
 # ----- Environment / secrets -----
 .env
