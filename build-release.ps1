@@ -56,11 +56,11 @@ function Show-Info {
 # ============================================
 Write-Host "Limpando diretorios de build..." -ForegroundColor Yellow
 
-if (Test-Path $ApiOutputDir) { Remove-Item -Path $ApiOutputDir -Recurse -Force }
-if (Test-Path $FrontendOutputDir) { Remove-Item -Path $FrontendOutputDir -Recurse -Force }
-if (Test-Path $DesktopOutputDir) { Remove-Item -Path $DesktopOutputDir -Recurse -Force }
-if (Test-Path $UpdaterOutputDir) { Remove-Item -Path $UpdaterOutputDir -Recurse -Force }
-if (Test-Path $PackagesDir) { Remove-Item -Path $PackagesDir -Recurse -Force }
+if (Test-Path $ApiOutputDir) { Remove-Item -Path $ApiOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
+if (Test-Path $FrontendOutputDir) { Remove-Item -Path $FrontendOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
+if (Test-Path $DesktopOutputDir) { Remove-Item -Path $DesktopOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
+if (Test-Path $UpdaterOutputDir) { Remove-Item -Path $UpdaterOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
+if (Test-Path $PackagesDir) { Remove-Item -Path $PackagesDir -Recurse -Force -ErrorAction SilentlyContinue }
 
 New-Item -Path $PackagesDir -ItemType Directory -Force | Out-Null
 
@@ -71,11 +71,13 @@ Write-Host ""
 # PASSO 1: PUBLICAR API (SELF-CONTAINED)
 # ============================================
 if (-not $SkipApi) {
-    $totalSteps = if (-not $SkipFrontend) { 4 } else { 3 }
-    if (-not $SkipDesktop) { $totalSteps++ }
-    if (-not $SkipUpdater) { $totalSteps++ }
-    
-    Show-Step 1 $totalSteps "Publicando API (self-contained, win-x64)..."
+    $step = 1
+    $totalSteps = 4
+    if ($SkipFrontend) { $totalSteps-- }
+    if ($SkipDesktop) { $totalSteps-- }
+    if ($SkipUpdater) { $totalSteps-- }
+
+    Show-Step $step $totalSteps "Publicando API (self-contained, win-x64)..."
     
     $apiProject = Join-Path $RootDir "src\backend\SF.Tecnologias.Api\SF.Tecnologias.Api.csproj"
     
@@ -111,14 +113,52 @@ if (-not $SkipApi) {
 }
 
 # ============================================
-# PASSO 2: BUILD DO FRONTEND
+# PASSO 2: BUILD DO UPDATER
+# (Antes do Desktop: electron-builder embute dist\updater)
+# ============================================
+if (-not $SkipUpdater) {
+    $step = if (-not $SkipApi) { 2 } else { 1 }
+    $totalSteps = 4
+    if ($SkipApi) { $totalSteps-- }
+    if ($SkipFrontend) { $totalSteps-- }
+    if ($SkipDesktop) { $totalSteps-- }
+
+    Show-Step $step $totalSteps "Buildando Updater..."
+
+    $updaterProject = Join-Path $RootDir "src\updater\SF.Updater\SF.Updater.csproj"
+
+    if (-not (Test-Path $updaterProject)) {
+        Show-Fail "Projeto do Updater nao encontrado: $updaterProject"
+    }
+
+    & dotnet publish $updaterProject `
+        --configuration $Configuration `
+        --self-contained true `
+        --runtime win-x64 `
+        --output $UpdaterOutputDir `
+        --nologo -v q
+
+    if ($LASTEXITCODE -ne 0) { Show-Fail "Falha na publicacao do Updater" }
+
+    Get-ChildItem -Path $UpdaterOutputDir -Filter '*.pdb' -ErrorAction SilentlyContinue | Remove-Item -Force
+    if (-not (Test-Path (Join-Path $UpdaterOutputDir "SF.Updater.exe"))) {
+        Show-Fail "SF.Updater.exe nao gerado em $UpdaterOutputDir"
+    }
+    Show-Ok "Updater publicado"
+}
+
+# ============================================
+# PASSO 3: BUILD DO FRONTEND
 # ============================================
 if (-not $SkipFrontend) {
-    $step = if (-not $SkipApi) { 2 } else { 1 }
-    $totalSteps = if (-not $SkipApi) { 4 } else { 3 }
-    if (-not $SkipDesktop) { $totalSteps++ }
-    if (-not $SkipUpdater) { $totalSteps++ }
-    
+    $step = 1
+    if (-not $SkipApi) { $step++ }
+    if (-not $SkipUpdater) { $step++ }
+    $totalSteps = 4
+    if ($SkipApi) { $totalSteps-- }
+    if ($SkipUpdater) { $totalSteps-- }
+    if ($SkipDesktop) { $totalSteps-- }
+
     Show-Step $step $totalSteps "Buildando frontend..."
     
     $frontendDir = Join-Path $RootDir "src\frontend\sf-tecnologias-web"
@@ -139,15 +179,16 @@ if (-not $SkipFrontend) {
 }
 
 # ============================================
-# PASSO 3: BUILD DO DESKTOP (ELECTRON-BUILDER)
+# PASSO 4: BUILD DO DESKTOP (ELECTRON-BUILDER)
+# (Por ultimo: precisa de dist\api, dist\updater e frontend)
 # ============================================
 if (-not $SkipDesktop) {
-    $step = if (-not $SkipApi) { 3 } else { 2 }
-    $step = if (-not $SkipFrontend) { $step } else { $step }
-    $totalSteps = if (-not $SkipApi) { 4 } else { 3 }
-    if (-not $SkipFrontend) { $totalSteps++ }
-    if (-not $SkipUpdater) { $totalSteps++ }
-    
+    $step = 4
+    $totalSteps = 4
+    if ($SkipApi) { $totalSteps-- }
+    if ($SkipFrontend) { $totalSteps-- }
+    if ($SkipUpdater) { $totalSteps-- }
+
     Show-Step $step $totalSteps "Buildando Desktop (Electron)..."
     
     $desktopDir = Join-Path $RootDir "src\desktop"
@@ -175,37 +216,6 @@ if (-not $SkipDesktop) {
     Show-Ok "Desktop buildado"
 }
 
-# ============================================
-# PASSO 4: BUILD DO UPDATER
-# ============================================
-if (-not $SkipUpdater) {
-    $step = if (-not $SkipApi) { 4 } else { 3 }
-    $step = if (-not $SkipFrontend) { $step } else { $step }
-    $step = if (-not $SkipDesktop) { $step } else { $step }
-    $totalSteps = if (-not $SkipApi) { 4 } else { 3 }
-    if (-not $SkipFrontend) { $totalSteps++ }
-    if (-not $SkipDesktop) { $totalSteps++ }
-    
-    Show-Step $step $totalSteps "Buildando Updater..."
-
-    $updaterProject = Join-Path $RootDir "src\updater\SF.Updater\SF.Updater.csproj"
-
-    if (-not (Test-Path $updaterProject)) {
-        Show-Fail "Projeto do Updater nao encontrado: $updaterProject"
-    }
-
-    & dotnet publish $updaterProject `
-        --configuration $Configuration `
-        --self-contained true `
-        --runtime win-x64 `
-        --output $UpdaterOutputDir `
-        --nologo -v q
-
-    if ($LASTEXITCODE -ne 0) { Show-Fail "Falha na publicacao do Updater" }
-
-    Get-ChildItem -Path $UpdaterOutputDir -Filter '*.pdb' -ErrorAction SilentlyContinue | Remove-Item -Force
-    Show-Ok "Updater publicado"
-}
 
 # ============================================
 # GERAR PACOTES PARA RELEASE
@@ -249,7 +259,7 @@ if (Test-Path $InstallerSourceDir) {
     Copy-Item -Path (Join-Path $InstallerSourceDir "*") -Destination $DistDir -Force -Recurse
     Show-Ok "Instalador copiado de installer/ para dist/"
 } else {
-    Show-Warn "Pasta installer/ nao encontrada - instalador nao copiado"
+    Write-Warning "Pasta installer/ nao encontrada - instalador nao copiado"
 }
 
 # ============================================

@@ -235,6 +235,31 @@ function Install-App {
     # Copiar app Electron
     Write-Host "  Copiando aplicacao..." -ForegroundColor Gray
     Copy-Item -Path "$DesktopSource\*" -Destination $InstallDir -Recurse -Force
+
+    # version.json na raiz do InstallDir (updater lê daqui)
+    $srcVersion = Join-Path $DesktopSource "version.json"
+    $dstVersion = Join-Path $InstallDir "version.json"
+    if (Test-Path $srcVersion) {
+        Copy-Item -Path $srcVersion -Destination $dstVersion -Force
+    } elseif (-not (Test-Path $dstVersion)) {
+        $versionInfo = @{ version = "0.0.0"; buildDate = (Get-Date -Format "yyyy-MM-dd"); buildConfiguration = "Release" } | ConvertTo-Json
+        Set-Content -Path $dstVersion -Value $versionInfo -Encoding UTF8
+    }
+
+    # Seguranca: nunca deixar Jwt:Secret hardcoded no appsettings da API instalada
+    $installedAppSettings = Join-Path $InstallDir "resources\api\appsettings.json"
+    if (Test-Path $installedAppSettings) {
+        try {
+            $cfg = Get-Content -Path $installedAppSettings -Raw | ConvertFrom-Json
+            if ($cfg.Jwt -and $cfg.Jwt.Secret) {
+                $cfg.Jwt.Secret = ""
+                $cfg | ConvertTo-Json -Depth 10 | Set-Content -Path $installedAppSettings -Encoding UTF8
+                Show-Ok "Jwt:Secret removido do appsettings instalado (use Jwt__Secret do servico)"
+            }
+        } catch {
+            Show-Warn "Nao foi possivel limpar Jwt:Secret do appsettings instalado"
+        }
+    }
     
     # Criar diretorio de dados (INSTALL CONTRACT: %ProgramData%\SF Tecnologias\data\)
     New-Item -Path $DataDir -ItemType Directory -Force | Out-Null
@@ -554,14 +579,15 @@ function Install-Service {
                 } catch {}
             }
 
-            $newEnv = @(
+            # IMPORTANTE: Environment e REG_MULTI_SZ (array de strings), nao string
+            $newEnv = [string[]]@(
                 "ASPNETCORE_ENVIRONMENT=Production",
                 "ASPNETCORE_URLS=http://localhost:5000",
                 "DatabaseProvider=SQLite",
                 "ConnectionStrings__DefaultConnection=Data Source=$dbPath",
                 "Jwt__Secret=$jwtSecret"
             )
-            Set-ItemProperty -Path $regPath -Name "Environment" -Value $newEnv -ErrorAction Stop
+            Set-ItemProperty -Path $regPath -Name "Environment" -Value $newEnv -Type MultiString -ErrorAction Stop
             Show-Ok "Variaveis de ambiente configuradas (inclui Jwt__Secret)"
         } catch {
             Show-Warn "Nao foi possivel configurar variaveis de ambiente via registro: $($_.Exception.Message)"
