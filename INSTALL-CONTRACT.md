@@ -268,7 +268,7 @@ QUALQUER ESTADO → Failed → (Rollback se aplicável) → Idle
 - [x] Pacote desktop flatten (zip root = layout do InstallDir)
 - [x] `build-release.ps1` aponta para `src\updater\SF.Updater\SF.Updater.csproj` (falha alto se ausente)
 - [x] `generate-manifest.ps1` exige GitHubOwner/GitHubRepo (URLs absolutas)
-- [ ] `SF.Updater.exe` instalado em `%ProgramFiles%\SF Tecnologias\` (requer install real com admin)
+- [x] `SF.Updater.exe` instalado em `%ProgramFiles%\SF Tecnologias\` (install real com admin verificado; update real elevado Completed, rollback em falha real verificado)
 - [x] `SF.Updater.exe` pode ser executado independentemente (self-contained, falha limpa sem manifesto)
 - [x] Updater cria backup antes de atualizar
 - [x] Updater preserva `%ProgramData%` durante atualização (DataDir separado do InstallDir; dados SQLite/empresa/usuario OK no E2E)
