@@ -16,21 +16,24 @@ namespace SF.Tecnologias.Infrastructure.Tests;
 
 /// <summary>
 /// Base class for database integration tests.
-/// Creates a dedicated test database (SFTecnologiasTestsDb), applies all
-/// EF Core migrations, and drops the database after the test run.
+/// Creates a unique dedicated test database per test, applies all
+/// EF Core migrations, and drops the database after the test.
 /// Requires a local PostgreSQL server (same credentials as development).
 /// </summary>
 public abstract class DatabaseTestBase : IAsyncLifetime
 {
     private const string MasterConnectionString =
         "Host=localhost;Port=5432;Database=postgres;Username=postgres;Password=postgres";
-    private const string TestDatabaseName = "SFTecnologiasTestsDb";
-    private const string TestConnectionString =
-        "Host=localhost;Port=5432;Database=" + TestDatabaseName + ";Username=postgres;Password=postgres";
+
+    private readonly string _testDatabaseName =
+        "SFTecnologiasTestsDb_" + Guid.NewGuid().ToString("N")[..12];
+
+    private string TestConnectionString =>
+        "Host=localhost;Port=5432;Database=" + _testDatabaseName +
+        ";Username=postgres;Password=postgres";
 
     public async Task InitializeAsync()
     {
-        await DropTestDatabaseIfExistsAsync();
         await CreateTestDatabaseAsync();
         await using var context = CreateContext();
         await context.Database.MigrateAsync();
@@ -62,28 +65,61 @@ public abstract class DatabaseTestBase : IAsyncLifetime
         return names;
     }
 
-    private static async Task DropTestDatabaseIfExistsAsync()
+    private async Task DropTestDatabaseIfExistsAsync()
     {
-        // Clear pooled connections so DROP DATABASE does not kill connections
-        // that later tests would otherwise reuse (causing "connection forcibly closed").
         NpgsqlConnection.ClearAllPools();
-        await using var connection = new NpgsqlConnection(MasterConnectionString);
-        await connection.OpenAsync();
-        await using var killCommand = connection.CreateCommand();
-        killCommand.CommandText = "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1 AND pid <> pg_backend_pid()";
-        killCommand.Parameters.AddWithValue(TestDatabaseName);
-        await killCommand.ExecuteNonQueryAsync();
-        await using var dropCommand = connection.CreateCommand();
-        dropCommand.CommandText = $"DROP DATABASE IF EXISTS \"{TestDatabaseName}\"";
-        await dropCommand.ExecuteNonQueryAsync();
+
+        Exception? last = null;
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(MasterConnectionString);
+                await connection.OpenAsync();
+                await using var dropCommand = connection.CreateCommand();
+                dropCommand.CommandText = $"DROP DATABASE IF EXISTS \"{_testDatabaseName}\" WITH (FORCE)";
+                await dropCommand.ExecuteNonQueryAsync();
+                return;
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                NpgsqlConnection.ClearAllPools();
+                await Task.Delay(150 * attempt);
+            }
+        }
+        throw new InvalidOperationException(
+            $"Failed to drop test database {_testDatabaseName}", last);
     }
 
-    private static async Task CreateTestDatabaseAsync()
+    private async Task CreateTestDatabaseAsync()
     {
-        await using var connection = new NpgsqlConnection(MasterConnectionString);
-        await connection.OpenAsync();
-        await using var command = connection.CreateCommand();
-        command.CommandText = $"CREATE DATABASE \"{TestDatabaseName}\"";
-        await command.ExecuteNonQueryAsync();
+        Exception? last = null;
+        for (var attempt = 1; attempt <= 5; attempt++)
+        {
+            try
+            {
+                await using var connection = new NpgsqlConnection(MasterConnectionString);
+                await connection.OpenAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText = $"CREATE DATABASE \"{_testDatabaseName}\"";
+                await command.ExecuteNonQueryAsync();
+                return;
+            }
+            catch (PostgresException ex)
+                when (ex.SqlState == PostgresErrorCodes.DuplicateDatabase)
+            {
+                last = ex;
+                await DropTestDatabaseIfExistsAsync();
+                await Task.Delay(100 * attempt);
+            }
+            catch (Exception ex)
+            {
+                last = ex;
+                await Task.Delay(100 * attempt);
+            }
+        }
+        throw new InvalidOperationException(
+            $"Failed to create test database {_testDatabaseName}", last);
     }
 }
