@@ -207,9 +207,9 @@ class Program
         }
         catch (Exception ex)
         {
-            Log($"ERRO FATAL: {ex.Message}");
+            Log($"ERRO FATAL: {ex.GetType().FullName}: {ex.Message}");
             Log($"Stack trace: {ex.StackTrace}");
-            SaveState(UpdateStatus.Failed, ex.Message);
+            SaveState(UpdateStatus.Failed, $"{ex.GetType().Name}: {ex.Message}");
 
             // Rollback if backup was taken and files were replaced
             if (!string.IsNullOrEmpty(LastBackupPath) && Directory.Exists(LastBackupPath))
@@ -306,7 +306,10 @@ class Program
             try
             {
                 var json = File.ReadAllText(versionFile);
-                var versionInfo = JsonSerializer.Deserialize<VersionInfo>(json);
+                var versionInfo = JsonSerializer.Deserialize<VersionInfo>(json, new JsonSerializerOptions
+                {
+                    PropertyNameCaseInsensitive = true
+                });
                 if (!string.IsNullOrEmpty(versionInfo?.Version))
                 {
                     Log($"Versao lida de {versionFile}: {versionInfo.Version}");
@@ -764,7 +767,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Log($"AVISO: Erro ao iniciar Desktop: {ex.Message}");
+            Log($"AVISO: Erro ao iniciar Desktop: {ex.GetType().FullName}: {ex.Message}");
         }
     }
 
@@ -785,8 +788,12 @@ class Program
                         Log("Health check OK");
                         return true;
                     }
+                    Log($"Health check attempt {i + 1}: HTTP {(int)response.StatusCode}");
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Log($"Health check attempt {i + 1}: {ex.GetType().Name}: {ex.Message}");
+                }
                 await Task.Delay(2000);
             }
 
@@ -795,7 +802,7 @@ class Program
         }
         catch (Exception ex)
         {
-            Log($"AVISO: Erro no health check: {ex.Message}");
+            Log($"AVISO: Erro no health check: {ex.GetType().FullName}: {ex.Message}");
             return false;
         }
     }
@@ -857,14 +864,16 @@ class Program
 
     static void Log(string message)
     {
-        var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}";
-        Console.WriteLine(line);
-
         try
         {
+            var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}";
+            Console.WriteLine(line);
             File.AppendAllText(LogFile, line + Environment.NewLine);
         }
-        catch { }
+        catch
+        {
+            // Logging must never throw (it can run inside catch blocks)
+        }
     }
 
     static async Task<string> RunCommand(string command, string arguments)
