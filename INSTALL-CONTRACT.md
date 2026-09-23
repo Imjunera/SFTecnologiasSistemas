@@ -268,20 +268,20 @@ QUALQUER ESTADO → Failed → (Rollback se aplicável) → Idle
 - [x] Pacote desktop flatten (zip root = layout do InstallDir)
 - [x] `build-release.ps1` aponta para `src\updater\SF.Updater\SF.Updater.csproj` (falha alto se ausente)
 - [x] `generate-manifest.ps1` exige GitHubOwner/GitHubRepo (URLs absolutas)
-- [ ] `SF.Updater.exe` instalado em `%ProgramFiles%\SF Tecnologias\`
-- [ ] `SF.Updater.exe` pode ser executado independentemente
+- [ ] `SF.Updater.exe` instalado em `%ProgramFiles%\SF Tecnologias\` (requer install real com admin)
+- [x] `SF.Updater.exe` pode ser executado independentemente (self-contained, falha limpa sem manifesto)
 - [x] Updater cria backup antes de atualizar
-- [ ] Updater preserva `%ProgramData%` durante atualização
-- [ ] Updater controla serviço Windows corretamente
+- [x] Updater preserva `%ProgramData%` durante atualização (DataDir separado do InstallDir; dados SQLite/empresa/usuario OK no E2E)
+- [x] Updater controla serviço Windows corretamente (sc.exe stop/start + timeout/force)
 - [x] Updater valida SHA-256 dos pacotes
 - [x] Updater registra logs detalhados
 - [x] Updater permite rollback em caso de falha
 - [x] Health check falhou ⇒ rollback (não Completed)
 - [x] Estados intermediários gravados (Downloaded/Validated/BackupCompleted/…)
-- [ ] Desktop inicia SF.Updater.exe para atualização
+- [x] Desktop inicia SF.Updater.exe para atualização (IPC `start-updater` em main.js)
 - [x] Fluxo completo de atualização funciona (1.0.0 → 1.0.1)
 - [x] Dados preservados após atualização
-- [ ] Falha durante atualização não corrompe instalação
+- [x] Falha durante atualização não corrompe instalação (rollback + estados intermediários)
 - [x] Fontes do instalador versionadas em `installer/` (copiadas para `dist/` no build)
 - [x] Comparaçao VC++ usa `[version]` (nao string)
 - [x] SHA-256 do `vc_redist.x64.exe` verificado no install
