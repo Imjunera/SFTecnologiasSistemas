@@ -3,6 +3,7 @@
 ## 1. Visão Geral
 
 O SF Tecnologias é composto por três componentes instaláveis:
+
 - **Desktop** (Electron) — Interface do usuário
 - **API** (ASP.NET Core) — Backend / persistência
 - **Updater** (C#/.NET) — Atualizador independente
@@ -78,14 +79,16 @@ A separação entre **binários** (substituíveis) e **dados** (preservados) é 
 
 A API recebe a localização do banco via variável de ambiente, que sobrescreve o `appsettings.json`:
 
-| Variável | Valor | Fonte |
-|---|---|---|
-| `ASPNETCORE_ENVIRONMENT` | `Production` | Desktop ou serviço |
-| `ASPNETCORE_URLS` | `http://localhost:5000` | Desktop ou serviço |
-| `DatabaseProvider` | `SQLite` | Desktop ou serviço |
-| `ConnectionStrings__DefaultConnection` | `Data Source=%ProgramData%\SF Tecnologias\data\SFTecnologias.db` | Desktop ou serviço |
+| Variável                               | Valor                                                            | Fonte                  |
+| -------------------------------------- | ---------------------------------------------------------------- | ---------------------- |
+| `ASPNETCORE_ENVIRONMENT`               | `Production`                                                     | Desktop ou serviço     |
+| `ASPNETCORE_URLS`                      | `http://localhost:5000`                                          | Desktop ou serviço     |
+| `DatabaseProvider`                     | `SQLite`                                                         | Desktop ou serviço     |
+| `ConnectionStrings__DefaultConnection` | `Data Source=%ProgramData%\SF Tecnologias\data\SFTecnologias.db` | Desktop ou serviço     |
+| `Jwt__Secret`                          | Segredo HMAC ≥32 chars (gerado no install)                       | Serviço (Setup-SF.ps1) |
 
 **Por que variável de ambiente?**
+
 - O `appsettings.json` é empacotado com os binários e seria substituído em atualizações
 - A variável de ambiente garante que o caminho do banco seja sempre resolvido em tempo de execução
 - Permite que Desktop e Serviço Windows apontem para o mesmo banco
@@ -94,24 +97,26 @@ A API recebe a localização do banco via variável de ambiente, que sobrescreve
 
 ### 4.1 Conta do Serviço Windows
 
-| Propriedade | Valor |
-|---|---|
-| Nome do serviço | `SFTecnologiasApi` |
-| Conta de execução | `LocalSystem` (padrão) |
-| Tipo de inicialização | Automático |
+| Propriedade           | Valor                  |
+| --------------------- | ---------------------- |
+| Nome do serviço       | `SFTecnologiasApi`     |
+| Conta de execução     | `LocalSystem` (padrão) |
+| Tipo de inicialização | Automático             |
 
 **Permissões necessárias para `LocalSystem`:**
+
 - Leitura em `%ProgramFiles%\SF Tecnologias\` ✅ (LocalSystem tem acesso)
 - Escrita em `%ProgramData%\SF Tecnologias\data\` ✅ (LocalSystem tem acesso total)
 
 ### 4.2 Conta do Usuário (Desktop)
 
-| Propriedade | Valor |
-|---|---|
-| Processo | `SF Tecnologias BETA.exe` |
-| Conta | Usuário logado |
+| Propriedade | Valor                     |
+| ----------- | ------------------------- |
+| Processo    | `SF Tecnologias BETA.exe` |
+| Conta       | Usuário logado            |
 
 **Permissões necessárias:**
+
 - Leitura em `%ProgramFiles%\SF Tecnologias\` ✅ (usuários comuns têm acesso de leitura)
 - Escrita em `%ProgramData%\SF Tecnologias\data\` ✅ (usuários comuns têm acesso de escrita no ProgramData)
 - Escrita em `%LOCALAPPDATA%\SF Tecnologias BETA\` ✅ (usuário tem acesso total ao seu LocalAppData)
@@ -155,49 +160,49 @@ QUALQUER ESTADO → Failed → (Rollback se aplicável) → Idle
 
 #### Arquivos que o Updater PODE modificar
 
-| Caminho | Ação |
-|---|---|
-| `%ProgramFiles%\SF Tecnologias\*` | Substituir (exceto SF.Updater.exe em uso) |
-| `%ProgramData%\SF Tecnologias\config\updater-state.json` | Criar/atualizar |
-| `%ProgramData%\SF Tecnologias\backups\*` | Criar (backup antes de update) |
-| `%ProgramData%\SF Tecnologias\logs\updater-*.log` | Criar |
-| `%ProgramData%\SF Tecnologias\updates\temp\*` | Criar/deletar (temporário) |
+| Caminho                                                  | Ação                                      |
+| -------------------------------------------------------- | ----------------------------------------- |
+| `%ProgramFiles%\SF Tecnologias\*`                        | Substituir (exceto SF.Updater.exe em uso) |
+| `%ProgramData%\SF Tecnologias\config\updater-state.json` | Criar/atualizar                           |
+| `%ProgramData%\SF Tecnologias\backups\*`                 | Criar (backup antes de update)            |
+| `%ProgramData%\SF Tecnologias\logs\updater-*.log`        | Criar                                     |
+| `%ProgramData%\SF Tecnologias\updates\temp\*`            | Criar/deletar (temporário)                |
 
 #### Arquivos que o Updater NUNCA modifica
 
-| Caminho | Motivo |
-|---|---|
-| `%ProgramData%\SF Tecnologias\data\*` | Dados do usuário |
-| `%LOCALAPPDATA%\SF Tecnologias BETA\*` | Logs do Desktop |
-| `%ProgramFiles%\SF Tecnologias\SF.Updater.exe` (em uso) | Próprio updater |
+| Caminho                                                 | Motivo           |
+| ------------------------------------------------------- | ---------------- |
+| `%ProgramData%\SF Tecnologias\data\*`                   | Dados do usuário |
+| `%LOCALAPPDATA%\SF Tecnologias BETA\*`                  | Logs do Desktop  |
+| `%ProgramFiles%\SF Tecnologias\SF.Updater.exe` (em uso) | Próprio updater  |
 
 ## 6. Arquivos Substituíveis vs Preservados
 
 ### Substituíveis (pelo updater)
 
-| Arquivo | Motivo |
-|---|---|
-| `SF Tecnologias BETA.exe` | Binário do Desktop |
-| `resources/api/SFTecnologiasApi.exe` | Binário da API |
-| `resources/api/appsettings.json` | Config da API (refém do binário) |
-| `resources/renderer/*` | Frontend build |
-| `*.dll`, `*.pak`, `*.bin` | Recursos Electron |
+| Arquivo                              | Motivo                           |
+| ------------------------------------ | -------------------------------- |
+| `SF Tecnologias BETA.exe`            | Binário do Desktop               |
+| `resources/api/SFTecnologiasApi.exe` | Binário da API                   |
+| `resources/api/appsettings.json`     | Config da API (refém do binário) |
+| `resources/renderer/*`               | Frontend build                   |
+| `*.dll`, `*.pak`, `*.bin`            | Recursos Electron                |
 
 ### Preservados (NUNCA pelo updater)
 
-| Arquivo | Motivo |
-|---|---|
-| `%ProgramData%\SF Tecnologias\data\SFTecnologias.db` | Banco de dados do usuário |
-| `%ProgramData%\SF Tecnologias\data\SFTecnologias.db-wal` | WAL do SQLite |
-| `%ProgramData%\SF Tecnologias\data\SFTecnologias.db-shm` | Shared memory do SQLite |
-| `%LOCALAPPDATA%\SF Tecnologias BETA\debug.log` | Log do Desktop |
+| Arquivo                                                  | Motivo                    |
+| -------------------------------------------------------- | ------------------------- |
+| `%ProgramData%\SF Tecnologias\data\SFTecnologias.db`     | Banco de dados do usuário |
+| `%ProgramData%\SF Tecnologias\data\SFTecnologias.db-wal` | WAL do SQLite             |
+| `%ProgramData%\SF Tecnologias\data\SFTecnologias.db-shm` | Shared memory do SQLite   |
+| `%LOCALAPPDATA%\SF Tecnologias BETA\debug.log`           | Log do Desktop            |
 
 ### Condicionais (preservados se existirem)
 
-| Arquivo | Quando preservar |
-|---|---|
+| Arquivo                                       | Quando preservar |
+| --------------------------------------------- | ---------------- |
 | `%ProgramData%\SF Tecnologias\data\backups\*` | Sempre preservar |
-| `%ProgramData%\SF Tecnologias\data\logs\*` | Sempre preservar |
+| `%ProgramData%\SF Tecnologias\data\logs\*`    | Sempre preservar |
 
 ## 7. Fluxo de Atualização
 
@@ -257,15 +262,29 @@ QUALQUER ESTADO → Failed → (Rollback se aplicável) → Idle
 - [x] `Setup-SF.ps1` cria estrutura de dados correta
 - [x] `Setup-SF.ps1` preserva dados em atualização
 - [x] `Desinstalar.bat` preserva dados por padrão
+- [x] JWT strict (assinatura obrigatória) + `Jwt__Secret` via env em Production
+- [x] DevelopmentSeeder roda apenas em Development
+- [x] Headers `X-Tenant-Id`/`X-User-Id` removidos (tenant só via JWT)
+- [x] Pacote desktop flatten (zip root = layout do InstallDir)
+- [x] `build-release.ps1` aponta para `src\updater\SF.Updater\SF.Updater.csproj` (falha alto se ausente)
+- [x] `generate-manifest.ps1` exige GitHubOwner/GitHubRepo (URLs absolutas)
 - [ ] `SF.Updater.exe` instalado em `%ProgramFiles%\SF Tecnologias\`
 - [ ] `SF.Updater.exe` pode ser executado independentemente
-- [ ] Updater cria backup antes de atualizar
+- [x] Updater cria backup antes de atualizar
 - [ ] Updater preserva `%ProgramData%` durante atualização
 - [ ] Updater controla serviço Windows corretamente
-- [ ] Updater valida SHA-256 dos pacotes
-- [ ] Updater registra logs detalhados
-- [ ] Updater permite rollback em caso de falha
+- [x] Updater valida SHA-256 dos pacotes
+- [x] Updater registra logs detalhados
+- [x] Updater permite rollback em caso de falha
+- [x] Health check falhou ⇒ rollback (não Completed)
+- [x] Estados intermediários gravados (Downloaded/Validated/BackupCompleted/…)
 - [ ] Desktop inicia SF.Updater.exe para atualização
-- [ ] Fluxo completo de atualização funciona (1.0.0 → 1.0.1)
-- [ ] Dados preservados após atualização
+- [x] Fluxo completo de atualização funciona (1.0.0 → 1.0.1)
+- [x] Dados preservados após atualização
 - [ ] Falha durante atualização não corrompe instalação
+- [x] Fontes do instalador versionadas em `installer/` (copiadas para `dist/` no build)
+- [x] Comparaçao VC++ usa `[version]` (nao string)
+- [x] SHA-256 do `vc_redist.x64.exe` verificado no install
+- [x] `Test-DotnetRuntime` morto removido
+- [x] Typo `Removeratalhes` corrigido
+- [x] Desinstalador agenda self-delete (nao remove o proprio diretorio em execucao)

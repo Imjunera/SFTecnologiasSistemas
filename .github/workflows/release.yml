@@ -3,175 +3,186 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to build (e.g., 1.0.0)'
+        description: "Version to build (e.g., 1.0.0)"
         required: true
         type: string
 
 env:
-  DOTNET_VERSION: '8.0.x'
-  NODE_VERSION: '20.x'
+  DOTNET_VERSION: "8.0.x"
+  NODE_VERSION: "20.x"
 
 jobs:
   build:
     runs-on: windows-latest
-    
+
     steps:
-    - name: Checkout
-      uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: ${{ env.DOTNET_VERSION }}
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ env.NODE_VERSION }}
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
-    - name: Determine version
-      id: version
-      run: |
-        if ("${{ github.event_name }}" -eq "workflow_dispatch") {
-          echo "version=${{ github.event.inputs.version }}" >> $env:GITHUB_OUTPUT
-        } else {
-          $tag = "${{ github.ref_name }}"
-          echo "version=$($tag -replace '^v', '')" >> $env:GITHUB_OUTPUT
-        }
-
-    - name: Build Backend (API)
-      run: |
-        dotnet publish src/backend/SF.Tecnologias.Api/SF.Tecnologias.Api.csproj `
-          --configuration Release `
-          --self-contained true `
-          --runtime win-x64 `
-          --output dist/api `
-          --nologo
-
-    - name: Clean API artifacts
-      run: |
-        Remove-Item -Path "dist/api/*.pdb" -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "dist/api/appsettings.Development.json" -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path "dist/api/web.config" -Force -ErrorAction SilentlyContinue
-
-    - name: Build Frontend
-      run: |
-        cd src/frontend/sf-tecnologias-web
-        npm ci
-        npm run build
-
-    - name: Build Updater
-      run: |
-        dotnet publish src/updater/SF.Updater/SF.Updater.csproj `
-          --configuration Release `
-          --self-contained true `
-          --runtime win-x64 `
-          --output dist/updater `
-          --nologo
-
-    - name: Clean Updater artifacts
-      run: |
-        Remove-Item -Path "dist/updater/*.pdb" -Force -ErrorAction SilentlyContinue
-
-    - name: Build Desktop (Electron)
-      run: |
-        cd src/desktop
-        npm ci
-        npx electron-builder --win portable --x64
-
-    - name: Create packages
-      run: |
-        $version = "${{ steps.version.outputs.version }}"
-        Compress-Archive -Path "dist/release/*" -DestinationPath "dist/packages/sf-tecnologias-desktop-$version.zip"
-        Compress-Archive -Path "dist/api/*" -DestinationPath "dist/packages/sf-tecnologias-api-$version.zip"
-        Compress-Archive -Path "dist/updater/*" -DestinationPath "dist/packages/sf-tecnologias-updater-$version.zip"
-
-    - name: Generate SHA-256
-      run: |
-        $packages = Get-ChildItem -Path "dist/packages" -Filter "*.zip"
-        $hashes = @()
-        foreach ($pkg in $packages) {
-          $hash = (Get-FileHash -Path $pkg.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
-          $hashes += "$hash  $($pkg.Name)"
-          Write-Host "$($pkg.Name): $hash"
-        }
-        $hashes | Set-Content -Path "dist/packages/SHA256SUMS.txt"
-
-    - name: Generate manifest
-      run: |
-        $version = "${{ steps.version.outputs.version }}"
-        $owner = "${{ github.repository_owner }}"
-        $repo = "${{ github.event.repository.name }}"
-        $baseUrl = "https://github.com/$owner/$repo/releases/download/v$version"
-        
-        $desktopHash = (Get-FileHash -Path "dist/packages/sf-tecnologias-desktop-$version.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
-        $apiHash = (Get-FileHash -Path "dist/packages/sf-tecnologias-api-$version.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
-        $updaterHash = (Get-FileHash -Path "dist/packages/sf-tecnologias-updater-$version.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
-        
-        $manifest = @{
-          product = "SF.Tecnologias"
-          version = $version
-          minimumUpdaterVersion = "1.0.0"
-          components = @{
-            desktop = @{
-              version = $version
-              packageUrl = "$baseUrl/sf-tecnologias-desktop-$version.zip"
-              sha256 = $desktopHash
-            }
-            api = @{
-              version = $version
-              packageUrl = "$baseUrl/sf-tecnologias-api-$version.zip"
-              sha256 = $apiHash
-            }
-            updater = @{
-              version = $version
-              packageUrl = "$baseUrl/sf-tecnologias-updater-$version.zip"
-              sha256 = $updaterHash
-            }
+      - name: Determine version
+        id: version
+        run: |
+          if ("${{ github.event_name }}" -eq "workflow_dispatch") {
+            echo "version=${{ github.event.inputs.version }}" >> $env:GITHUB_OUTPUT
+          } else {
+            $tag = "${{ github.ref_name }}"
+            echo "version=$($tag -replace '^v', '')" >> $env:GITHUB_OUTPUT
           }
-          mandatory = $false
-          releaseNotes = ""
-          generatedAt = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
-        }
-        
-        $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path "dist/packages/manifest.json"
-        
-        # Also save as release asset
-        $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path "dist/packages/manifest-$version.json"
 
-    - name: Upload artifacts
-      uses: actions/upload-artifact@v4
-      with:
-        name: release-packages
-        path: dist/packages/
+      - name: Build Backend (API)
+        run: |
+          dotnet publish src/backend/SF.Tecnologias.Api/SF.Tecnologias.Api.csproj `
+            --configuration Release `
+            --self-contained true `
+            --runtime win-x64 `
+            --output dist/api `
+            --nologo
+
+      - name: Clean API artifacts
+        run: |
+          Remove-Item -Path "dist/api/*.pdb" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "dist/api/appsettings.Development.json" -Force -ErrorAction SilentlyContinue
+          Remove-Item -Path "dist/api/web.config" -Force -ErrorAction SilentlyContinue
+
+      - name: Build Frontend
+        run: |
+          cd src/frontend/sf-tecnologias-web
+          npm ci
+          npm run build
+
+      - name: Build Updater
+        run: |
+          dotnet publish src/updater/SF.Updater/SF.Updater.csproj `
+            --configuration Release `
+            --self-contained true `
+            --runtime win-x64 `
+            --output dist/updater `
+            --nologo
+
+      - name: Clean Updater artifacts
+        run: |
+          Remove-Item -Path "dist/updater/*.pdb" -Force -ErrorAction SilentlyContinue
+
+      - name: Build Desktop (Electron)
+        run: |
+          cd src/desktop
+          npm ci
+          npx electron-builder --win portable --x64
+
+      - name: Create packages
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+
+          # Desktop: flatten win-unpacked/* so zip root matches InstallDir layout
+          $winUnpacked = "dist/release/win-unpacked"
+          if (Test-Path $winUnpacked) {
+            # Inject version.json at package root (read by desktop + updater)
+            $versionInfo = @{ version = $version; buildDate = (Get-Date -Format "yyyy-MM-dd"); buildConfiguration = "Release" } | ConvertTo-Json
+            Set-Content -Path (Join-Path $winUnpacked "version.json") -Value $versionInfo -Encoding UTF8
+            Compress-Archive -Path "$winUnpacked\*" -DestinationPath "dist/packages/sf-tecnologias-desktop-$version.zip" -Force
+          } else {
+            Compress-Archive -Path "dist/release/*" -DestinationPath "dist/packages/sf-tecnologias-desktop-$version.zip" -Force
+          }
+
+          Compress-Archive -Path "dist/api/*" -DestinationPath "dist/packages/sf-tecnologias-api-$version.zip" -Force
+          Compress-Archive -Path "dist/updater/*" -DestinationPath "dist/packages/sf-tecnologias-updater-$version.zip" -Force
+
+      - name: Generate SHA-256
+        run: |
+          $packages = Get-ChildItem -Path "dist/packages" -Filter "*.zip"
+          $hashes = @()
+          foreach ($pkg in $packages) {
+            $hash = (Get-FileHash -Path $pkg.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+            $hashes += "$hash  $($pkg.Name)"
+            Write-Host "$($pkg.Name): $hash"
+          }
+          $hashes | Set-Content -Path "dist/packages/SHA256SUMS.txt"
+
+      - name: Generate manifest
+        run: |
+          $version = "${{ steps.version.outputs.version }}"
+          $owner = "${{ github.repository_owner }}"
+          $repo = "${{ github.event.repository.name }}"
+          $baseUrl = "https://github.com/$owner/$repo/releases/download/v$version"
+
+          $desktopHash = (Get-FileHash -Path "dist/packages/sf-tecnologias-desktop-$version.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $apiHash = (Get-FileHash -Path "dist/packages/sf-tecnologias-api-$version.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          $updaterHash = (Get-FileHash -Path "dist/packages/sf-tecnologias-updater-$version.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+
+          $manifest = @{
+            product = "SF.Tecnologias"
+            version = $version
+            minimumUpdaterVersion = "1.0.0"
+            components = @{
+              desktop = @{
+                version = $version
+                packageUrl = "$baseUrl/sf-tecnologias-desktop-$version.zip"
+                sha256 = $desktopHash
+              }
+              api = @{
+                version = $version
+                packageUrl = "$baseUrl/sf-tecnologias-api-$version.zip"
+                sha256 = $apiHash
+              }
+              updater = @{
+                version = $version
+                packageUrl = "$baseUrl/sf-tecnologias-updater-$version.zip"
+                sha256 = $updaterHash
+              }
+            }
+            mandatory = $false
+            releaseNotes = ""
+            generatedAt = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+          }
+
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path "dist/packages/manifest.json"
+
+          # Also save as release asset
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path "dist/packages/manifest-$version.json"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-packages
+          path: dist/packages/
 
   release:
     needs: build
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
-    
+
     permissions:
       contents: write
-    
-    steps:
-    - name: Download artifacts
-      uses: actions/download-artifact@v4
-      with:
-        name: release-packages
-        path: packages/
 
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      with:
-        name: "SF Tecnologias ${{ github.ref_name }}"
-        draft: false
-        prerelease: false
-        generate_release_notes: true
-        files: |
-          packages/*
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-packages
+          path: packages/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "SF Tecnologias ${{ github.ref_name }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            packages/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

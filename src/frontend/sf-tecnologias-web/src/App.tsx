@@ -1,8 +1,8 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import type { LoginResponse } from './contracts/auth';
-import { HttpService } from './http.service';
-import { H2Application } from './modules/h2/components/h2-application';
-import { UpdateNotification } from './components/UpdateNotification';
+import React, { useEffect, useState, useCallback } from "react";
+import type { LoginResponse } from "./contracts/auth";
+import { HttpService } from "./http.service";
+import { H2Application } from "./modules/h2/components/h2-application";
+import { UpdateNotification } from "./components/UpdateNotification";
 
 interface UserInfo {
   nome: string;
@@ -12,13 +12,13 @@ interface UserInfo {
 
 function decodeJwtPayload(token: string): Record<string, any> | null {
   try {
-    const base64Url = token.split('.')[1];
-    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const base64Url = token.split(".")[1];
+    const base64 = base64Url.replace(/-/g, "+").replace(/_/g, "/");
     const jsonPayload = decodeURIComponent(
       atob(base64)
-        .split('')
-        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
-        .join(''),
+        .split("")
+        .map((c) => "%" + ("00" + c.charCodeAt(0).toString(16)).slice(-2))
+        .join("")
     );
     return JSON.parse(jsonPayload);
   } catch {
@@ -38,25 +38,25 @@ export const App: React.FC = () => {
         if ((window as any).api?.getToken) {
           t = await (window as any).api.getToken();
         } else {
-          t = sessionStorage.getItem('sf-access-token');
+          t = sessionStorage.getItem("sf-access-token");
         }
         if (t) {
           const payload = decodeJwtPayload(t);
           if (payload) {
             const user: UserInfo = {
-              nome: payload.usuario_nome || 'Usuario',
+              nome: payload.usuario_nome || "Usuario",
               empresaId: Number(payload.empresa_id) || 0,
               empresaNome: payload.empresa_nome || `Empresa #${payload.empresa_id}`,
             };
             setToken(t);
             setUserInfo(user);
           } else {
-            sessionStorage.removeItem('sf-access-token');
-            sessionStorage.removeItem('sf-user-info');
+            sessionStorage.removeItem("sf-access-token");
+            sessionStorage.removeItem("sf-user-info");
           }
         }
       } catch (err) {
-        console.error('Error checking session:', err);
+        console.error("Error checking session:", err);
       } finally {
         setLoading(false);
       }
@@ -64,48 +64,53 @@ export const App: React.FC = () => {
     checkSession();
   }, []);
 
-  const handleLogin = useCallback(async (empresaCodigo: string, senha: string): Promise<string | null> => {
-    try {
-      let response: LoginResponse | undefined;
-      if ((window as any).api?.login) {
-        response = (await (window as any).api.login(empresaCodigo, senha)) as LoginResponse;
-      } else {
-        const result = await HttpService.post<LoginResponse>('/api/auth/login', {
-          empresaCodigo,
-          senha,
-        });
-        if (result.success && result.data?.accessToken) {
-          sessionStorage.setItem('sf-access-token', result.data.accessToken);
-          response = result.data;
+  const handleLogin = useCallback(
+    async (empresaCodigo: string, senha: string, email?: string): Promise<string | null> => {
+      try {
+        let response: LoginResponse | undefined;
+        if ((window as any).api?.login) {
+          response = (await (window as any).api.login(
+            empresaCodigo,
+            senha,
+            email
+          )) as LoginResponse;
         } else {
-          return result.error || 'Credenciais inválidas.';
+          const result = await HttpService.post<LoginResponse>("/api/auth/login", {
+            empresaCodigo,
+            senha,
+            email: email || undefined,
+          });
+          if (result.success && result.data?.accessToken) {
+            sessionStorage.setItem("sf-access-token", result.data.accessToken);
+            response = result.data;
+          } else {
+            return result.error || "Credenciais inválidas.";
+          }
         }
-      }
 
-      if (response?.accessToken) {
-        setToken(response.accessToken);
-        const payload = decodeJwtPayload(response.accessToken);
-        const user: UserInfo = {
-          nome: response.nome || 'Usuário',
-          empresaId: response.empresaId || 0,
-          empresaNome: payload?.empresa_nome || `Empresa #${response.empresaId}`,
-        };
-        setUserInfo(user);
-        sessionStorage.setItem('sf-user-info', JSON.stringify(user));
-        // Temporary: Save tenant and user IDs for headers (until JWT auth is fixed)
-        sessionStorage.setItem('sf-empresa-id', String(response.empresaId));
-        sessionStorage.setItem('sf-usuario-id', String(response.usuarioId));
-        // Notify Electron to resize window to main app
-        if ((window as any).api?.loginSuccess) {
-          await (window as any).api.loginSuccess();
+        if (response?.accessToken) {
+          setToken(response.accessToken);
+          const payload = decodeJwtPayload(response.accessToken);
+          const user: UserInfo = {
+            nome: response.nome || "Usuário",
+            empresaId: response.empresaId || 0,
+            empresaNome: payload?.empresa_nome || `Empresa #${response.empresaId}`,
+          };
+          setUserInfo(user);
+          sessionStorage.setItem("sf-user-info", JSON.stringify(user));
+          // Notify Electron to resize window to main app
+          if ((window as any).api?.loginSuccess) {
+            await (window as any).api.loginSuccess();
+          }
+          return null;
         }
-        return null;
+        return "Credenciais inválidas.";
+      } catch (err: any) {
+        return err?.message || "Falha na autenticação.";
       }
-      return 'Credenciais inválidas.';
-    } catch (err: any) {
-      return err?.message || 'Falha na autenticação.';
-    }
-  }, []);
+    },
+    []
+  );
 
   const handleLogout = async () => {
     try {
@@ -113,10 +118,10 @@ export const App: React.FC = () => {
         await (window as any).api.logout();
       }
     } catch (err) {
-      console.error('Logout error:', err);
+      console.error("Logout error:", err);
     }
-    sessionStorage.removeItem('sf-access-token');
-    sessionStorage.removeItem('sf-user-info');
+    sessionStorage.removeItem("sf-access-token");
+    sessionStorage.removeItem("sf-user-info");
     setToken(null);
     setUserInfo(null);
   };
@@ -165,9 +170,12 @@ export const App: React.FC = () => {
   );
 };
 
-const LoginForm: React.FC<{ onLogin: (empresaCodigo: string, senha: string) => Promise<string | null> }> = ({ onLogin }) => {
-  const [empresaCodigo, setEmpresaCodigo] = useState('');
-  const [senha, setSenha] = useState('');
+const LoginForm: React.FC<{
+  onLogin: (empresaCodigo: string, senha: string, email?: string) => Promise<string | null>;
+}> = ({ onLogin }) => {
+  const [empresaCodigo, setEmpresaCodigo] = useState("");
+  const [senha, setSenha] = useState("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -176,12 +184,12 @@ const LoginForm: React.FC<{ onLogin: (empresaCodigo: string, senha: string) => P
     setError(null);
     setLoading(true);
     try {
-      const errorMsg = await onLogin(empresaCodigo, senha);
+      const errorMsg = await onLogin(empresaCodigo, senha, email.trim() || undefined);
       if (errorMsg) {
         setError(errorMsg);
       }
     } catch (err: any) {
-      setError(err?.message || 'Erro ao efetuar login.');
+      setError(err?.message || "Erro ao efetuar login.");
     } finally {
       setLoading(false);
     }
@@ -190,7 +198,10 @@ const LoginForm: React.FC<{ onLogin: (empresaCodigo: string, senha: string) => P
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <div>
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#374151]" htmlFor="empresa-id">
+        <label
+          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#374151]"
+          htmlFor="empresa-id"
+        >
           EMPRESA_ID
         </label>
         <input
@@ -205,7 +216,10 @@ const LoginForm: React.FC<{ onLogin: (empresaCodigo: string, senha: string) => P
         />
       </div>
       <div>
-        <label className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#374151]" htmlFor="senha">
+        <label
+          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#374151]"
+          htmlFor="senha"
+        >
           Senha
         </label>
         <input
@@ -219,12 +233,29 @@ const LoginForm: React.FC<{ onLogin: (empresaCodigo: string, senha: string) => P
           className="h-10 w-full rounded border border-[#d1d5db] bg-white px-3 text-sm text-[#1a1a2e] placeholder:text-[#9ca3af] focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
         />
       </div>
+      <div>
+        <label
+          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#374151]"
+          htmlFor="email"
+        >
+          E-mail (se houver mais de um usuário)
+        </label>
+        <input
+          id="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="opcional"
+          disabled={loading}
+          className="h-10 w-full rounded border border-[#d1d5db] bg-white px-3 text-sm text-[#1a1a2e] placeholder:text-[#9ca3af] focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
+        />
+      </div>
       <button
         type="submit"
         disabled={loading}
         className="h-10 w-full rounded bg-[#1e3a5f] text-sm font-semibold uppercase tracking-wider text-white hover:bg-[#162d4a] active:bg-[#0f2038] disabled:opacity-50"
       >
-        {loading ? 'Autenticando...' : 'Entrar'}
+        {loading ? "Autenticando..." : "Entrar"}
       </button>
       {error && (
         <div className="rounded border border-red-200 bg-red-50 p-2 text-center text-xs text-red-700">

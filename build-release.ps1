@@ -187,26 +187,24 @@ if (-not $SkipUpdater) {
     if (-not $SkipDesktop) { $totalSteps++ }
     
     Show-Step $step $totalSteps "Buildando Updater..."
-    
-    $updaterProject = Join-Path $RootDir "src\updater\SF.Updater.csproj"
-    
-    if (Test-Path $updaterProject) {
-        & dotnet publish $updaterProject `
-            --configuration $Configuration `
-            --self-contained true `
-            --runtime win-x64 `
-            --output $UpdaterOutputDir `
-            --nologo -v q
-        
-        if ($LASTEXITCODE -ne 0) { Show-Fail "Falha na publicacao do Updater" }
-        
-        # Limpar PDBs
-        Get-ChildItem -Path $UpdaterOutputDir -Filter '*.pdb' -ErrorAction SilentlyContinue | Remove-Item -Force
-        
-        Show-Ok "Updater publicado"
-    } else {
-        Show-Info "Projeto do Updater nao encontrado. Pule este passo ou crie o projeto primeiro."
+
+    $updaterProject = Join-Path $RootDir "src\updater\SF.Updater\SF.Updater.csproj"
+
+    if (-not (Test-Path $updaterProject)) {
+        Show-Fail "Projeto do Updater nao encontrado: $updaterProject"
     }
+
+    & dotnet publish $updaterProject `
+        --configuration $Configuration `
+        --self-contained true `
+        --runtime win-x64 `
+        --output $UpdaterOutputDir `
+        --nologo -v q
+
+    if ($LASTEXITCODE -ne 0) { Show-Fail "Falha na publicacao do Updater" }
+
+    Get-ChildItem -Path $UpdaterOutputDir -Filter '*.pdb' -ErrorAction SilentlyContinue | Remove-Item -Force
+    Show-Ok "Updater publicado"
 }
 
 # ============================================
@@ -215,11 +213,18 @@ if (-not $SkipUpdater) {
 Write-Host ""
 Write-Host "Gerando pacotes para release..." -ForegroundColor Yellow
 
-# Pacote Desktop
+# Pacote Desktop (flatten: zip root = InstallDir layout)
 $desktopPackage = Join-Path $PackagesDir "sf-tecnologias-desktop-$Version.zip"
 if (Test-Path $DesktopOutputDir) {
-    Compress-Archive -Path "$DesktopOutputDir\*" -DestinationPath $desktopPackage -Force
-    Show-Ok "Pacote Desktop: $desktopPackage"
+    # Inject version.json at package root
+    $versionInfo = @{ version = $Version; buildDate = (Get-Date -Format "yyyy-MM-dd"); buildConfiguration = $Configuration } | ConvertTo-Json
+
+    $winUnpacked = Join-Path $DesktopOutputDir "win-unpacked"
+    $desktopSource = if (Test-Path $winUnpacked) { $winUnpacked } else { $DesktopOutputDir }
+    Set-Content -Path (Join-Path $desktopSource "version.json") -Value $versionInfo -Encoding UTF8
+
+    Compress-Archive -Path "$desktopSource\*" -DestinationPath $desktopPackage -Force
+    Show-Ok "Pacote Desktop (flatten de $desktopSource): $desktopPackage"
 }
 
 # Pacote API
@@ -234,6 +239,17 @@ $updaterPackage = Join-Path $PackagesDir "sf-tecnologias-updater-$Version.zip"
 if (Test-Path $UpdaterOutputDir) {
     Compress-Archive -Path "$UpdaterOutputDir\*" -DestinationPath $updaterPackage -Force
     Show-Ok "Pacote Updater: $updaterPackage"
+}
+
+# ============================================
+# COPIAR INSTALADOR (installer/ -> dist/)
+# ============================================
+$InstallerSourceDir = Join-Path $RootDir "installer"
+if (Test-Path $InstallerSourceDir) {
+    Copy-Item -Path (Join-Path $InstallerSourceDir "*") -Destination $DistDir -Force -Recurse
+    Show-Ok "Instalador copiado de installer/ para dist/"
+} else {
+    Show-Warn "Pasta installer/ nao encontrada - instalador nao copiado"
 }
 
 # ============================================

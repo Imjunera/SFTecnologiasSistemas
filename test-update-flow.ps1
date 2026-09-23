@@ -323,7 +323,7 @@ if ($WithFailure) {
 # ============================================
 Write-Host ""
 Write-Host "========================================" -ForegroundColor Green
-Write-Host " Teste de atualizacao concluido!" -ForegroundColor Green
+Write-Host " Teste de atualizacao (simulado) OK!" -ForegroundColor Green
 Write-Host "========================================" -ForegroundColor Green
 Write-Host ""
 Write-Host "Diretorios:" -ForegroundColor Cyan
@@ -331,6 +331,51 @@ Write-Host "  Install: $installDir" -ForegroundColor White
 Write-Host "  Data:    $dataDir" -ForegroundColor White
 Write-Host "  Backup:  $backupDir" -ForegroundColor White
 Write-Host "  Packages: $packagesDir" -ForegroundColor White
-Write-Host ""
-Write-Host "Para executar o updater real:" -ForegroundColor Yellow
-Write-Host "  .\dist\updater\SF.Updater.exe --manifest file:///$($manifestFile -replace '\\', '/') --install-dir $installDir --data-dir $dataDir" -ForegroundColor Cyan
+
+# ============================================
+# EXECUTAR UPDATER REAL (se disponivel)
+# ============================================
+$updaterExe = Join-Path $RootDir "dist\updater\SF.Updater.exe"
+if (Test-Path $updaterExe) {
+    Write-Host ""
+    Write-Host "Executando SF.Updater.exe real..." -ForegroundColor Yellow
+
+    $manifestUri = "file:///" + ($manifestFile -replace '\\', '/')
+    $updaterArgs = @(
+        "--manifest", "`"$manifestUri`"",
+        "--install-dir", "`"$installDir`"",
+        "--data-dir", "`"$dataDir`""
+    )
+
+    $proc = Start-Process -FilePath $updaterExe -ArgumentList $updaterArgs -Wait -PassThru -NoNewWindow
+    $exitCode = $proc.ExitCode
+
+    $validations2 = @()
+    $newVersionFile = Join-Path $installDir "version.json"
+    if (Test-Path $newVersionFile) {
+        $v = Get-Content $newVersionFile | ConvertFrom-Json
+        $validations2 += @{ Name = "Real updater: version.json updated"; Pass = $v.version -eq $ToVersion }
+    } else {
+        $validations2 += @{ Name = "Real updater: version.json present"; Pass = $false }
+    }
+    $validations2 += @{ Name = "Real updater: exit code 0"; Pass = $exitCode -eq 0 }
+
+    $stateFile = Join-Path (Join-Path $env:ProgramData "SF Tecnologias") "config\updater-state.json"
+    if (Test-Path $stateFile) {
+        $st = Get-Content $stateFile | ConvertFrom-Json
+        $validations2 += @{ Name = "Real updater: state Completed"; Pass = $st.Status -eq "Completed" }
+    }
+
+    Write-Host ""
+    Write-Host "Resultados (updater real):" -ForegroundColor Cyan
+    $p2 = 0; $f2 = 0
+    foreach ($v in $validations2) {
+        if ($v.Pass) { Write-Host "  PASS: $($v.Name)" -ForegroundColor Green; $p2++ }
+        else { Write-Host "  FAIL: $($v.Name)" -ForegroundColor Red; $f2++ }
+    }
+    Write-Host "Total real: $p2 passed, $f2 failed" -ForegroundColor $(if ($f2 -eq 0) { 'Green' } else { 'Red' })
+} else {
+    Write-Host ""
+    Write-Host "SF.Updater.exe nao encontrado em dist\updater - pule build do updater." -ForegroundColor Yellow
+    Write-Host "  .\build-release.ps1 -SkipApi -SkipFrontend -SkipDesktop" -ForegroundColor Cyan
+}

@@ -35,20 +35,36 @@ namespace SF.Tecnologias.Application.Services
             if (empresa == null)
                 return null;
 
-            // Find the active user associated with this company
-            var usuarioEmpresa = await _context.UsuarioEmpresas
+            var vinculosQuery = _context.UsuarioEmpresas
                 .Include(ue => ue.Usuario)
                 .Include(ue => ue.Empresa)
                 .Include(ue => ue.Perfil)
                     .ThenInclude(p => p.Permissoes)
-                .FirstOrDefaultAsync(ue =>
+                .Where(ue =>
                     ue.EmpresaId == empresa.Id &&
                     ue.Ativo &&
                     ue.Empresa.Ativo &&
                     ue.Usuario.Ativo);
 
-            if (usuarioEmpresa == null)
-                return null;
+            UsuarioEmpresa? usuarioEmpresa;
+            if (!string.IsNullOrWhiteSpace(request.Email))
+            {
+                var email = request.Email.Trim().ToLower();
+                usuarioEmpresa = await vinculosQuery
+                    .FirstOrDefaultAsync(ue => ue.Usuario.Email.ToLower() == email);
+                if (usuarioEmpresa == null)
+                    return null;
+            }
+            else
+            {
+                var candidatos = await vinculosQuery.ToListAsync();
+                if (candidatos.Count == 0)
+                    return null;
+                if (candidatos.Count > 1)
+                    throw new ArgumentException(
+                        "Multiplas contas ativas nesta empresa. Informe o e-mail do usuario para continuar.");
+                usuarioEmpresa = candidatos[0];
+            }
 
             // Verify password
             if (!BCrypt.Net.BCrypt.Verify(request.Senha, usuarioEmpresa.Usuario.SenhaHash))
@@ -73,6 +89,8 @@ namespace SF.Tecnologias.Application.Services
         {
             var jwtSettings = _configuration.GetSection("Jwt");
             var secretKey = jwtSettings["Secret"];
+            if (string.IsNullOrWhiteSpace(secretKey) || secretKey.Length < 32)
+                throw new InvalidOperationException("Jwt:Secret ausente ou invalido (min 32 caracteres).");
             var issuer = jwtSettings["Issuer"];
             var audience = jwtSettings["Audience"];
 

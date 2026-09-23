@@ -87,13 +87,16 @@ class Program
             SaveState(UpdateStatus.Downloading, "Downloading packages");
             var desktopPackage = await DownloadPackage(manifest.Components.Desktop, "desktop");
             var apiPackage = await DownloadPackage(manifest.Components.Api, "api");
+            var updaterPackage = await DownloadPackage(manifest.Components.Updater, "updater");
 
-            if (desktopPackage == null && apiPackage == null)
+            if (desktopPackage == null && apiPackage == null && updaterPackage == null)
             {
                 Log("ERRO: Nenhum pacote foi baixado com sucesso");
                 SaveState(UpdateStatus.Failed, "Download failed");
                 return 1;
             }
+
+            SaveState(UpdateStatus.Downloaded, "Packages downloaded");
 
             // Validate SHA-256
             SaveState(UpdateStatus.Validating, "Validating packages");
@@ -117,21 +120,43 @@ class Program
                 }
             }
 
+            if (updaterPackage != null && manifest.Components.Updater?.Sha256 != null)
+            {
+                if (!ValidateSha256(updaterPackage, manifest.Components.Updater.Sha256))
+                {
+                    Log("ERRO: SHA-256 do pacote Updater incorreto");
+                    SaveState(UpdateStatus.Failed, "Updater package hash mismatch");
+                    return 1;
+                }
+            }
+
             Log("SHA-256 validado com sucesso");
+            SaveState(UpdateStatus.Validated, "Packages validated");
 
             // Stop services
             SaveState(UpdateStatus.StoppingServices, "Stopping services");
             await StopServices();
+            SaveState(UpdateStatus.ServicesStopped, "Services stopped");
 
             // Create backup
             SaveState(UpdateStatus.BackingUp, "Creating backup");
-            CreateBackup(currentVersion);
+            var backupPath = CreateBackup(currentVersion);
+            if (backupPath == null)
+            {
+                Log("ERRO: Falha ao criar backup — abortando antes de substituir arquivos");
+                SaveState(UpdateStatus.Failed, "Backup failed");
+                await AttemptRecovery();
+                return 1;
+            }
+            SaveState(UpdateStatus.BackupCompleted, $"Backup at {backupPath}");
+            LastBackupPath = backupPath;
 
             // Update Desktop
             if (desktopPackage != null)
             {
                 SaveState(UpdateStatus.UpdatingDesktop, "Updating desktop");
                 UpdateDesktop(desktopPackage);
+                SaveState(UpdateStatus.DesktopUpdated, "Desktop updated");
                 Log("Desktop atualizado");
             }
 
@@ -140,19 +165,34 @@ class Program
             {
                 SaveState(UpdateStatus.UpdatingApi, "Updating API");
                 UpdateApi(apiPackage);
+                SaveState(UpdateStatus.ApiUpdated, "API updated");
                 Log("API atualizada");
+            }
+
+            // Self-update updater (swap running exe on Windows: rename allowed)
+            if (updaterPackage != null)
+            {
+                SaveState(UpdateStatus.UpdatingUpdater, "Updating updater");
+                UpdateUpdater(updaterPackage);
+                SaveState(UpdateStatus.UpdaterUpdated, "Updater updated");
+                Log("Updater atualizado (nova versao efetiva na proxima execucao)");
             }
 
             // Start services
             SaveState(UpdateStatus.StartingServices, "Starting services");
             await StartServices();
+            SaveState(UpdateStatus.ServicesStarted, "Services started");
 
-            // Health check
+            // Health check — falha ⇒ rollback, NUNCA Completed
             SaveState(UpdateStatus.HealthCheckPassed, "Running health check");
             var healthOk = await HealthCheck();
             if (!healthOk)
             {
-                Log("AVISO: Health check falhou, mas atualizacao foi concluida");
+                Log("ERRO: Health check falhou — iniciando rollback");
+                SaveState(UpdateStatus.Failed, "Health check failed — rolling back");
+                await RollbackFromBackup(backupPath);
+                await AttemptRecovery();
+                return 1;
             }
 
             // Start Desktop
@@ -162,9 +202,7 @@ class Program
             SaveState(UpdateStatus.Completed, $"Updated from {currentVersion} to {manifest.Version}");
             Log($"Atualizacao concluida: {currentVersion} -> {manifest.Version}");
 
-            // Cleanup temp files
             CleanupTempFiles();
-
             return 0;
         }
         catch (Exception ex)
@@ -173,11 +211,20 @@ class Program
             Log($"Stack trace: {ex.StackTrace}");
             SaveState(UpdateStatus.Failed, ex.Message);
 
-            // Try to recover
+            // Rollback if backup was taken and files were replaced
+            if (!string.IsNullOrEmpty(LastBackupPath) && Directory.Exists(LastBackupPath))
+            {
+                Log("Tentando rollback a partir do backup...");
+                await RollbackFromBackup(LastBackupPath);
+                SaveState(UpdateStatus.RollbackRequired, "Rolled back after failure");
+            }
+
             await AttemptRecovery();
             return 1;
         }
     }
+
+    static string? LastBackupPath;
 
     static void ParseArguments(string[] args)
     {
@@ -244,17 +291,35 @@ class Program
 
     static string GetCurrentVersion()
     {
-        var versionFile = Path.Combine(InstallDir, "version.json");
-        if (File.Exists(versionFile))
+        // Preferred: version.json at InstallDir root (injected at package build)
+        // Fallback: Electron packaged path resources/app/version.json
+        var candidates = new[]
         {
+            Path.Combine(InstallDir, "version.json"),
+            Path.Combine(InstallDir, "resources", "app", "version.json"),
+            Path.Combine(InstallDir, "resources", "app.asar.unpacked", "version.json"),
+        };
+
+        foreach (var versionFile in candidates)
+        {
+            if (!File.Exists(versionFile)) continue;
             try
             {
                 var json = File.ReadAllText(versionFile);
                 var versionInfo = JsonSerializer.Deserialize<VersionInfo>(json);
-                return versionInfo?.Version ?? "0.0.0";
+                if (!string.IsNullOrEmpty(versionInfo?.Version))
+                {
+                    Log($"Versao lida de {versionFile}: {versionInfo.Version}");
+                    return versionInfo.Version;
+                }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Log($"AVISO: Falha ao ler {versionFile}: {ex.Message}");
+            }
         }
+
+        Log("AVISO: version.json nao encontrado — assumindo 0.0.0");
         return "0.0.0";
     }
 
@@ -482,16 +547,16 @@ class Program
         }
     }
 
-    static void CreateBackup(string version)
+    static string? CreateBackup(string version)
     {
         try
         {
             var backupDir = Path.Combine(BackupsDir, $"backup-{version}-{DateTime.Now:yyyyMMdd-HHmmss}");
             Directory.CreateDirectory(backupDir);
 
-            // Backup Desktop files (excluding updater)
+            // Backup Desktop files (excluding updater temp)
             var desktopFiles = Directory.GetFiles(InstallDir, "*.*", SearchOption.AllDirectories)
-                .Where(f => !f.Contains("SF.Updater.exe") && !f.Contains("updates"))
+                .Where(f => !f.Contains("SF.Updater.exe") && !f.Contains("updates") && !f.EndsWith(".old"))
                 .ToList();
 
             foreach (var file in desktopFiles)
@@ -504,10 +569,102 @@ class Program
             }
 
             Log($"Backup criado: {backupDir} ({desktopFiles.Count} arquivos)");
+            return backupDir;
         }
         catch (Exception ex)
         {
-            Log($"AVISO: Erro ao criar backup: {ex.Message}");
+            Log($"ERRO: Falha ao criar backup: {ex.Message}");
+            return null;
+        }
+    }
+
+    static async Task RollbackFromBackup(string backupPath)
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(backupPath) || !Directory.Exists(backupPath))
+            {
+                Log("ERRO: Backup indisponivel para rollback");
+                return;
+            }
+
+            Log($"Rollback: restaurando de {backupPath}");
+
+            // Stop services before restoring files
+            await StopServices();
+
+            var files = Directory.GetFiles(backupPath, "*.*", SearchOption.AllDirectories);
+            foreach (var file in files)
+            {
+                var relativePath = Path.GetRelativePath(backupPath, file);
+                // Never restore into data dir; only InstallDir
+                var destPath = Path.Combine(InstallDir, relativePath);
+                var destDir = Path.GetDirectoryName(destPath);
+                if (destDir != null) Directory.CreateDirectory(destDir);
+
+                try
+                {
+                    File.Copy(file, destPath, true);
+                }
+                catch (IOException)
+                {
+                    var tempName = destPath + ".old";
+                    if (File.Exists(tempName)) File.Delete(tempName);
+                    if (File.Exists(destPath)) File.Move(destPath, tempName);
+                    File.Copy(file, destPath, true);
+                    try { File.Delete(tempName); } catch { }
+                }
+            }
+
+            Log($"Rollback concluido: {files.Length} arquivos restaurados");
+            SaveState(UpdateStatus.RollbackRequired, $"Rolled back from {backupPath}");
+            await StartServices();
+        }
+        catch (Exception ex)
+        {
+            Log($"ERRO no rollback: {ex.Message}");
+        }
+    }
+
+    static void UpdateUpdater(string packagePath)
+    {
+        // Extract to temp, then swap running SF.Updater.exe (rename allowed while running)
+        var tempExtract = Path.Combine(UpdatesTempDir, "updater-extract-" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            ZipFile.ExtractToDirectory(packagePath, tempExtract);
+
+            var newExe = Directory.GetFiles(tempExtract, "SF.Updater.exe", SearchOption.AllDirectories).FirstOrDefault();
+            var currentExe = Path.Combine(InstallDir, "SF.Updater.exe");
+
+            if (newExe != null && File.Exists(currentExe))
+            {
+                var oldPath = currentExe + ".old";
+                if (File.Exists(oldPath)) File.Delete(oldPath);
+                File.Move(currentExe, oldPath);
+                File.Copy(newExe, currentExe, true);
+                try { File.Delete(oldPath); } catch { /* cleaned on next run if locked */ }
+                Log("SF.Updater.exe substituido");
+            }
+            else
+            {
+                // Fallback: extract into InstallDir (skips locked self)
+                foreach (var file in Directory.GetFiles(tempExtract, "*.*", SearchOption.AllDirectories))
+                {
+                    if (Path.GetFileName(file).Equals("SF.Updater.exe", StringComparison.OrdinalIgnoreCase))
+                        continue;
+                    var rel = Path.GetRelativePath(tempExtract, file);
+                    var dest = Path.Combine(InstallDir, rel);
+                    var dir = Path.GetDirectoryName(dest);
+                    if (dir != null) Directory.CreateDirectory(dir);
+                    File.Copy(file, dest, true);
+                }
+                Log("Updater extraido (self-swap parcial — verifique .old)");
+            }
+        }
+        finally
+        {
+            try { Directory.Delete(tempExtract, true); } catch { }
         }
     }
 
@@ -686,7 +843,11 @@ class Program
         var stateFile = Path.Combine(ConfigDir, "updater-state.json");
         try
         {
-            var json = JsonSerializer.Serialize(CurrentState, new JsonSerializerOptions { WriteIndented = true });
+            var json = JsonSerializer.Serialize(CurrentState, new JsonSerializerOptions
+            {
+                WriteIndented = true,
+                Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
+            });
             File.WriteAllText(stateFile, json);
         }
         catch { }
@@ -754,6 +915,8 @@ enum UpdateStatus
     DesktopUpdated,
     UpdatingApi,
     ApiUpdated,
+    UpdatingUpdater,
+    UpdaterUpdated,
     StartingServices,
     ServicesStarted,
     HealthCheckPassed,
@@ -785,6 +948,7 @@ class ComponentGroup
 {
     public ComponentInfo? Desktop { get; set; }
     public ComponentInfo? Api { get; set; }
+    public ComponentInfo? Updater { get; set; }
 }
 
 class ComponentInfo

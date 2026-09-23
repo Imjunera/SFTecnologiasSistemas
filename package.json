@@ -5,6 +5,12 @@
   "description": "SF Tecnologias — scripts da solução",
   "scripts": {
     "start:api": "dotnet run --project src/backend/SF.Tecnologias.Api/SF.Tecnologias.Api.csproj --environment Development --no-launch-profile --urls http://localhost:5000",
-    "build:beta": "npm run build:beta --prefix src/desktop"
+    "build:beta": "npm run build:beta --prefix src/desktop",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7",
+    "lint-staged": "^17.5.1",
+    "prettier": "^3.9.9"
   }
 }

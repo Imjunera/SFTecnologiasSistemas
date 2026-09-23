@@ -58,22 +58,36 @@ builder.Services.AddScoped<IMesaService, MesaService>();
 builder.Services.AddScoped<ICaixaService, CaixaService>();
 
 // Add authentication
+var jwtSettings = builder.Configuration.GetSection("Jwt");
+var jwtSecret = jwtSettings["Secret"];
+if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
+{
+    if (builder.Environment.IsDevelopment() && string.IsNullOrWhiteSpace(jwtSecret))
+    {
+        jwtSecret = "dev-only-insecure-jwt-secret-do-not-use-in-production-0123456789";
+    }
+    else
+    {
+        throw new InvalidOperationException(
+            "Jwt:Secret ausente ou invalido (min 32 caracteres). " +
+            "Em Production, configure a variavel de ambiente Jwt__Secret.");
+    }
+}
+
 builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var jwtSettings = builder.Configuration.GetSection("Jwt");
         options.TokenValidationParameters = new TokenValidationParameters
         {
             ValidateIssuer = true,
             ValidateAudience = true,
             ValidateLifetime = true,
-            ValidateIssuerSigningKey = false,
+            ValidateIssuerSigningKey = true,
             ValidIssuer = jwtSettings["Issuer"],
             ValidAudience = jwtSettings["Audience"],
-            IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(jwtSettings["Secret"] ?? "defaultSecretKeyThatIsLongEnough")),
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret)),
             ClockSkew = TimeSpan.FromMinutes(5),
-            RequireSignedTokens = false
+            RequireSignedTokens = true
         };
         options.Events = new JwtBearerEvents
         {
@@ -135,8 +149,11 @@ using (var scope = app.Services.CreateScope())
         await db.Database.MigrateAsync();
     }
 
-    var seeder = scope.ServiceProvider.GetRequiredService<DevelopmentSeeder>();
-    await seeder.SeedAsync();
+    if (app.Environment.IsDevelopment())
+    {
+        var seeder = scope.ServiceProvider.GetRequiredService<DevelopmentSeeder>();
+        await seeder.SeedAsync();
+    }
 }
 
 // Configure the HTTP request pipeline.
@@ -191,6 +208,15 @@ app.MapPost("/api/auth/login", async (IAuthService authService, LoginRequest req
         if (response is null)
             return Results.Unauthorized();
         return Results.Ok(response);
+    }
+    catch (ArgumentException ex)
+    {
+        return Results.BadRequest(new ProblemDetails
+        {
+            Status = StatusCodes.Status400BadRequest,
+            Title = "Login failed",
+            Detail = ex.Message
+        });
     }
     catch (Exception ex)
     {

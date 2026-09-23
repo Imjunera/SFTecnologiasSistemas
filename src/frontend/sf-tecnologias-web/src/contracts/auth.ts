@@ -1,7 +1,7 @@
-
 export interface LoginRequest {
   empresaCodigo: string;
   senha: string;
+  email?: string;
 }
 
 export interface LoginResponse {
@@ -12,4 +12,3 @@ export interface LoginResponse {
   nome: string;
   permissoes: string[];
 }
-

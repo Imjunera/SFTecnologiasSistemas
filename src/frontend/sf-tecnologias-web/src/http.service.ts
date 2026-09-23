@@ -1,4 +1,4 @@
-import type { ApiResponse } from './contracts/error';
+import type { ApiResponse } from "./contracts/error";
 
 /**
  * HTTP service wrapper for window.api.request and fetch.
@@ -6,19 +6,19 @@ import type { ApiResponse } from './contracts/error';
  */
 export class HttpService {
   static async get<T>(url: string, config: RequestInit = {}): Promise<ApiResponse<T>> {
-    return this.request<T>('GET', url, undefined, config);
+    return this.request<T>("GET", url, undefined, config);
   }
 
   static async post<T>(url: string, data: any, config: RequestInit = {}): Promise<ApiResponse<T>> {
-    return this.request<T>('POST', url, data, config);
+    return this.request<T>("POST", url, data, config);
   }
 
   static async put<T>(url: string, data: any, config: RequestInit = {}): Promise<ApiResponse<T>> {
-    return this.request<T>('PUT', url, data, config);
+    return this.request<T>("PUT", url, data, config);
   }
 
   static async delete<T>(url: string, config: RequestInit = {}): Promise<ApiResponse<T>> {
-    return this.request<T>('DELETE', url, undefined, config);
+    return this.request<T>("DELETE", url, undefined, config);
   }
 
   private static async request<T>(
@@ -32,30 +32,19 @@ export class HttpService {
       if ((window as any).api?.getToken) {
         token = await (window as any).api.getToken();
       } else {
-        token = sessionStorage.getItem('sf-access-token');
+        token = sessionStorage.getItem("sf-access-token");
       }
     } catch {
       token = null;
     }
 
     const headers = new Headers({
-      'Content-Type': 'application/json',
+      "Content-Type": "application/json",
       ...(config.headers ?? {}),
     });
 
     if (token) {
-      headers.set('Authorization', `Bearer ${token}`);
-    }
-
-    // Temporary: Add tenant and user headers for endpoints without JWT auth
-    // TODO: Remove this when JWT authentication is fixed
-    const tenantId = sessionStorage.getItem('sf-empresa-id');
-    const userId = sessionStorage.getItem('sf-usuario-id');
-    if (tenantId) {
-      headers.set('X-Tenant-Id', tenantId);
-    }
-    if (userId) {
-      headers.set('X-User-Id', userId);
+      headers.set("Authorization", `Bearer ${token}`);
     }
 
     try {
@@ -80,7 +69,7 @@ export class HttpService {
         return response as ApiResponse<T>;
       } else {
         // Direct browser fallback for development
-        const baseUrl = 'http://localhost:5000';
+        const baseUrl = "http://localhost:5000";
         const res = await fetch(baseUrl + url, {
           method,
           headers,
@@ -93,8 +82,8 @@ export class HttpService {
           status: res.status,
           data: resData,
           success: res.ok,
-          message: res.ok ? 'Sucesso' : 'Erro na requisição',
-          error: res.ok ? undefined : (resData?.error || resData?.title || 'Erro na requisição'),
+          message: res.ok ? "Sucesso" : "Erro na requisição",
+          error: res.ok ? undefined : resData?.error || resData?.title || "Erro na requisição",
         } as ApiResponse<T>;
       }
     } catch (err: any) {
@@ -102,8 +91,8 @@ export class HttpService {
         status: err.status ?? 500,
         data: null,
         success: false,
-        error: err.message ?? 'Erro desconhecido',
-        message: err.message ?? 'Erro desconhecido',
+        error: err.message ?? "Erro desconhecido",
+        message: err.message ?? "Erro desconhecido",
         details: err.details ?? null,
       } as ApiResponse<T>;
     }

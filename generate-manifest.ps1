@@ -104,13 +104,11 @@ if ($GitHubOwner -and $GitHubRepo) {
     $desktopUrl = if ($desktopPackage) { "$baseUrl/$($desktopPackage.Name)" } else { $null }
     $apiUrl = if ($apiPackage) { "$baseUrl/$($apiPackage.Name)" } else { $null }
     $updaterUrl = if ($updaterPackage) { "$baseUrl/$($updaterPackage.Name)" } else { $null }
-    
+
     Show-Info "Base URL: $baseUrl"
 } else {
-    Show-Info "GitHub owner/repo nao fornecido. URLs serao relativas."
-    $desktopUrl = if ($desktopPackage) { $desktopPackage.Name } else { $null }
-    $apiUrl = if ($apiPackage) { $apiPackage.Name } else { $null }
-    $updaterUrl = if ($updaterPackage) { $updaterPackage.Name } else { $null }
+    Show-Fail "GitHubOwner e GitHubRepo sao obrigatorios para URLs absolutas de download."
+    Show-Info "Exemplo: .\generate-manifest.ps1 -Version $Version -GitHubOwner Imjunera -GitHubRepo SFTecnologiasSistemas"
 }
 
 # ============================================
