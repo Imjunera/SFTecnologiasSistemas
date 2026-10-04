@@ -6,6 +6,10 @@
   "scripts": {
     "start:api": "dotnet run --project src/backend/SF.Tecnologias.Api/SF.Tecnologias.Api.csproj --environment Development --no-launch-profile --urls http://localhost:5000",
     "build:beta": "npm run build:beta --prefix src/desktop",
+    "build:api": "dotnet publish src/backend/SF.Tecnologias.Api/SF.Tecnologias.Api.csproj --configuration Release --self-contained true --runtime win-x64 --output dist/api --nologo",
+    "build:updater": "dotnet publish src/updater/SF.Updater/SF.Updater.csproj --configuration Release --self-contained true --runtime win-x64 --output dist/updater --nologo",
+    "build:frontend": "npm run build --prefix src/frontend/sf-tecnologias-web",
+    "package:system": "powershell -ExecutionPolicy Bypass -File scripts/package-system.ps1",
     "prepare": "husky"
   },
   "devDependencies": {

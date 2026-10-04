@@ -5,7 +5,7 @@
 
 param(
     [string]$Configuration = "Release",
-    [string]$OutputDir = "..\..\dist\api"
+    [string]$OutputDir = "..\..\..\dist\api"
 )
 
 $ErrorActionPreference = "Stop"

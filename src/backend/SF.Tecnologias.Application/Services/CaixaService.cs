@@ -46,6 +46,8 @@ namespace SF.Tecnologias.Application.Services
 
             if (sessao == null) return null;
 
+            var (quantidadeVendas, totalVendas) = await CalcularTotaisAsync(sessao.Id);
+
             return new SessaoCaixaDto
             {
                 Id = sessao.Id,
@@ -58,8 +60,75 @@ namespace SF.Tecnologias.Application.Services
                 ValorInicial = sessao.ValorInicial,
                 DataFechamento = sessao.DataFechamento,
                 ValorFechamento = sessao.ValorFechamento,
-                Status = sessao.Status.ToString()
+                Status = sessao.Status.ToString(),
+                TotalVendas = totalVendas,
+                QuantidadeVendas = quantidadeVendas
             };
+        }
+
+        public async Task<ResumoCaixaDto?> ObterResumoAsync()
+        {
+            var empresaId = GetCurrentTenantId();
+
+            var sessao = await _context.SessoesCaixa
+                .AsNoTracking()
+                .FirstOrDefaultAsync(s => s.EmpresaId == empresaId && s.Status == StatusSessaoCaixa.Aberta);
+
+            if (sessao == null) return null;
+
+            var (quantidadeVendas, totalVendas) = await CalcularTotaisAsync(sessao.Id);
+
+            var porForma = (await _context.Vendas
+                .AsNoTracking()
+                .Where(v => v.SessaoCaixaId == sessao.Id && v.Status == StatusVenda.Concluida)
+                .Select(v => new { v.FormaPagamento, v.ValorTotal })
+                .ToListAsync())
+                .GroupBy(v => v.FormaPagamento)
+                .Select(g => new ResumoFormaPagamentoDto
+                {
+                    FormaPagamento = g.Key,
+                    Quantidade = g.Count(),
+                    Total = g.Sum(v => v.ValorTotal)
+                })
+                .OrderBy(g => g.FormaPagamento)
+                .ToList();
+
+            return new ResumoCaixaDto
+            {
+                SessaoId = sessao.Id,
+                MesaId = sessao.MesaId,
+                MesaNumero = sessao.MesaId.HasValue
+                    ? await _context.Mesas.AsNoTracking().Where(m => m.Id == sessao.MesaId.Value).Select(m => (int?)m.Numero).FirstOrDefaultAsync()
+                    : null,
+                DataAbertura = sessao.DataAbertura,
+                ValorInicial = sessao.ValorInicial,
+                QuantidadeVendas = quantidadeVendas,
+                TotalVendas = totalVendas,
+                ValorEsperado = sessao.ValorInicial + totalVendas,
+                PorFormaPagamento = porForma
+            };
+        }
+
+        /// <summary>
+        /// Vendas concluidas vinculadas a sessao (exclui canceladas).
+        ///
+        /// Agrega em memoria: o provedor SQLite do EF Core nao traduz SUM sobre decimal
+        /// ("SQLite cannot apply aggregate operator 'Sum' on expressions of type 'decimal'").
+        /// A projecao e limitada aos valores da sessao, portanto o custo e controlado.
+        /// </summary>
+        private async Task<(int Quantidade, decimal Total)> CalcularTotaisAsync(int sessaoId)
+        {
+            var valores = await _context.Vendas
+                .Where(v => v.SessaoCaixaId == sessaoId && v.Status == StatusVenda.Concluida)
+                .Select(v => v.ValorTotal)
+                .ToListAsync();
+
+            if (valores.Count == 0) return (0, 0m);
+
+            var total = 0m;
+            foreach (var valor in valores) total += valor;
+
+            return (valores.Count, total);
         }
 
         public async Task<SessaoCaixaDto> AbrirAsync(AbrirCaixaRequest request)
@@ -116,7 +185,9 @@ namespace SF.Tecnologias.Application.Services
                 MesaNumero = mesa?.Numero,
                 DataAbertura = sessao.DataAbertura,
                 ValorInicial = sessao.ValorInicial,
-                Status = sessao.Status.ToString()
+                Status = sessao.Status.ToString(),
+                TotalVendas = 0m,
+                QuantidadeVendas = 0
             };
         }
 
@@ -158,6 +229,8 @@ namespace SF.Tecnologias.Application.Services
 
             await _context.SaveChangesAsync();
 
+            var (quantidadeVendas, totalVendas) = await CalcularTotaisAsync(sessao.Id);
+
             return new SessaoCaixaDto
             {
                 Id = sessao.Id,
@@ -170,7 +243,9 @@ namespace SF.Tecnologias.Application.Services
                 ValorInicial = sessao.ValorInicial,
                 DataFechamento = sessao.DataFechamento,
                 ValorFechamento = sessao.ValorFechamento,
-                Status = sessao.Status.ToString()
+                Status = sessao.Status.ToString(),
+                TotalVendas = totalVendas,
+                QuantidadeVendas = quantidadeVendas
             };
         }
     }

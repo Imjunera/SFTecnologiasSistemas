@@ -288,3 +288,8 @@ QUALQUER ESTADO → Failed → (Rollback se aplicável) → Idle
 - [x] `Test-DotnetRuntime` morto removido
 - [x] Typo `Removeratalhes` corrigido
 - [x] Desinstalador agenda self-delete (nao remove o proprio diretorio em execucao)
+- [x] `Setup.bat` (duplo clique) abre assistente gráfico de download/install: baixa pacotes da release (GitHub Releases ou `manifestUrl` do `installer-config.json`), valida SHA-256 e instala tudo pronto para uso
+- [x] Instalador faz fallback para pacotes locais (`dist/api`, `dist/release`, `dist/updater`) quando não há release pública (fluxo dev)
+- [x] Download com progresso, velocidade, ETA, cancelamento e pump de mensagens WinForms (`Invoke-FileDownload`)
+- [x] TLS 1.2 forçado nos downloads; `RandomNumberGenerator` no lugar de `RNGCryptoServiceProvider` (deprecated)
+- [x] `RNG deprecado`, dead code `$envVars` e typo `Atalhes` removidos do `Setup-SF.ps1`

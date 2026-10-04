@@ -29,6 +29,8 @@ namespace SF.Tecnologias.Infrastructure.Persistence
         public DbSet<Cliente> Clientes { get; set; } = default!;
         public DbSet<Mesa> Mesas { get; set; } = default!;
         public DbSet<SessaoCaixa> SessoesCaixa { get; set; } = default!;
+        public DbSet<Venda> Vendas { get; set; } = default!;
+        public DbSet<VendaItem> VendaItens { get; set; } = default!;
 
         public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
         {
@@ -209,6 +211,67 @@ namespace SF.Tecnologias.Infrastructure.Persistence
                  .HasForeignKey(x => x.MesaId)
                  .OnDelete(DeleteBehavior.SetNull);
                 sc.HasIndex(x => new { x.EmpresaId, x.Status });
+            });
+
+            // Venda
+            modelBuilder.Entity<Venda>(v =>
+            {
+                v.HasKey(x => x.Id);
+                v.Property(x => x.FormaPagamento).IsRequired().HasMaxLength(20);
+                v.Property(x => x.ValorTotal).HasColumnType("numeric(18,2)").IsRequired();
+                v.Property(x => x.Status).IsRequired();
+                v.HasOne(x => x.Empresa)
+                 .WithMany()
+                 .HasForeignKey(x => x.EmpresaId)
+                 .OnDelete(DeleteBehavior.Restrict);
+                v.HasOne(x => x.Usuario)
+                 .WithMany()
+                 .HasForeignKey(x => x.UsuarioId)
+                 .OnDelete(DeleteBehavior.Restrict);
+                v.HasOne(x => x.SessaoCaixa)
+                 .WithMany()
+                 .HasForeignKey(x => x.SessaoCaixaId)
+                 .OnDelete(DeleteBehavior.SetNull);
+                v.HasOne(x => x.Cliente)
+                 .WithMany()
+                 .HasForeignKey(x => x.ClienteId)
+                 .OnDelete(DeleteBehavior.SetNull);
+                v.HasMany(x => x.Itens)
+                 .WithOne(i => i.Venda)
+                 .HasForeignKey(i => i.VendaId)
+                 .OnDelete(DeleteBehavior.Cascade);
+                v.HasIndex(x => new { x.EmpresaId, x.DataVenda });
+                v.HasIndex(x => new { x.EmpresaId, x.SessaoCaixaId });
+                v.ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_Vendas_ValorTotal_Negativo", "\"ValorTotal\" >= 0");
+                    t.HasCheckConstraint("CK_Vendas_FormaPagamento_NaoVazia", "\"FormaPagamento\" <> ''");
+                });
+            });
+
+            // VendaItem
+            modelBuilder.Entity<VendaItem>(vi =>
+            {
+                vi.HasKey(x => x.Id);
+                vi.Property(x => x.ProdutoNome).IsRequired().HasMaxLength(200);
+                vi.Property(x => x.Quantidade).IsRequired();
+                vi.Property(x => x.PrecoUnitario).HasColumnType("numeric(18,2)").IsRequired();
+                vi.Property(x => x.Subtotal).HasColumnType("numeric(18,2)").IsRequired();
+                vi.HasOne(x => x.Empresa)
+                 .WithMany()
+                 .HasForeignKey(x => x.EmpresaId)
+                 .OnDelete(DeleteBehavior.Restrict);
+                vi.HasOne(x => x.Produto)
+                 .WithMany()
+                 .HasForeignKey(x => x.ProdutoId)
+                 .OnDelete(DeleteBehavior.SetNull);
+                vi.HasIndex(x => x.VendaId);
+                vi.ToTable(t =>
+                {
+                    t.HasCheckConstraint("CK_VendaItens_Quantidade_Positiva", "\"Quantidade\" > 0");
+                    t.HasCheckConstraint("CK_VendaItens_PrecoUnitario_NaoNegativo", "\"PrecoUnitario\" >= 0");
+                    t.HasCheckConstraint("CK_VendaItens_Subtotal_NaoNegativo", "\"Subtotal\" >= 0");
+                });
             });
 
             ApplyTenantQueryFilters(modelBuilder);

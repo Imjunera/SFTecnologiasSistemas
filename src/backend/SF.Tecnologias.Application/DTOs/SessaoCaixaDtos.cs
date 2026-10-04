@@ -15,6 +15,10 @@ namespace SF.Tecnologias.Application.DTOs
         public DateTime? DataFechamento { get; set; }
         public decimal? ValorFechamento { get; set; }
         public string Status { get; set; } = "Aberta";
+
+        /// <summary>Vendas concluidas vinculadas a esta sessao (usado no fechamento).</summary>
+        public decimal TotalVendas { get; set; }
+        public int QuantidadeVendas { get; set; }
     }
 
     public class AbrirCaixaRequest

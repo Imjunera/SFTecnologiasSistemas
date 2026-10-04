@@ -52,15 +52,24 @@ function Show-Info {
 }
 
 # ============================================
-# LIMPEZA
+# LIMPEZA (respeita -Skip*: apagar o que nao sera refeito perde artefatos validados)
 # ============================================
 Write-Host "Limpando diretorios de build..." -ForegroundColor Yellow
 
-if (Test-Path $ApiOutputDir) { Remove-Item -Path $ApiOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
-if (Test-Path $FrontendOutputDir) { Remove-Item -Path $FrontendOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
-if (Test-Path $DesktopOutputDir) { Remove-Item -Path $DesktopOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
-if (Test-Path $UpdaterOutputDir) { Remove-Item -Path $UpdaterOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
-if (Test-Path $PackagesDir) { Remove-Item -Path $PackagesDir -Recurse -Force -ErrorAction SilentlyContinue }
+if (-not $SkipApi) {
+    if (Test-Path $ApiOutputDir) { Remove-Item -Path $ApiOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+if (-not $SkipFrontend) {
+    if (Test-Path $FrontendOutputDir) { Remove-Item -Path $FrontendOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+if (-not $SkipDesktop) {
+    if (Test-Path $DesktopOutputDir) { Remove-Item -Path $DesktopOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+if (-not $SkipUpdater) {
+    if (Test-Path $UpdaterOutputDir) { Remove-Item -Path $UpdaterOutputDir -Recurse -Force -ErrorAction SilentlyContinue }
+}
+# dist\packages nao e limpo por inteiro: cada passo regrava o proprio zip (-Force),
+# preservando os pacotes dos componentes que estao sendo pulados.
 
 New-Item -Path $PackagesDir -ItemType Directory -Force | Out-Null
 
@@ -251,16 +260,39 @@ if (Test-Path $UpdaterOutputDir) {
     Show-Ok "Pacote Updater: $updaterPackage"
 }
 
-# ============================================
-# COPIAR INSTALADOR (installer/ -> dist/)
-# ============================================
-$InstallerSourceDir = Join-Path $RootDir "installer"
-if (Test-Path $InstallerSourceDir) {
-    Copy-Item -Path (Join-Path $InstallerSourceDir "*") -Destination $DistDir -Force -Recurse
-    Show-Ok "Instalador copiado de installer/ para dist/"
-} else {
-    Write-Warning "Pasta installer/ nao encontrada - instalador nao copiado"
-}
+    # ============================================
+    # INSTALADOR: scripts -> dist/ e payload offline <- dist/
+    # ============================================
+    # Antes: Copy-Item installer/* -> dist/* copiava tambem os bins velhos de
+    # installer\{api,updater,release} por cima dos artefatos recem-construidos.
+    $InstallerSourceDir = Join-Path $RootDir "installer"
+    if (Test-Path $InstallerSourceDir) {
+        Get-ChildItem -Path $InstallerSourceDir -File | Copy-Item -Destination $DistDir -Force
+        Show-Ok "Instalador (scripts) copiado de installer/ para dist/"
+
+        # Payload offline do Setup-SF (ele usa installer\{api,updater,release,systems} quando
+        # existem): sincroniza a partir do build atual para nao embutir binarios velhos.
+        # systems = staging do contrato (dist\systems, gerado por package-system.ps1):
+        # sem esta sincronia o instalador levaria um sistema embutido desatualizado.
+        $SystemsOutputDir = Join-Path $DistDir "systems"
+        $payloadMap = @(
+            @{ Source = $ApiOutputDir;      Dest = "api";      Skip = $SkipApi },
+            @{ Source = $UpdaterOutputDir;  Dest = "updater";  Skip = $SkipUpdater },
+            @{ Source = $DesktopOutputDir;  Dest = "release";  Skip = $SkipDesktop },
+            @{ Source = $SystemsOutputDir;  Dest = "systems";  Skip = $false }
+        )
+        foreach ($payload in $payloadMap) {
+            if ($payload.Skip) { continue }
+            if (-not (Test-Path $payload.Source)) { continue }
+            $dest = Join-Path $InstallerSourceDir $payload.Dest
+            if (Test-Path $dest) { Remove-Item -Path $dest -Recurse -Force -ErrorAction SilentlyContinue }
+            New-Item -Path $dest -ItemType Directory -Force | Out-Null
+            Copy-Item -Path (Join-Path $payload.Source "*") -Destination $dest -Recurse -Force
+            Show-Ok "Payload offline atualizado: $($payload.Dest)"
+        }
+    } else {
+        Write-Warning "Pasta installer/ nao encontrada - instalador nao copiado"
+    }
 
 # ============================================
 # CALCULAR SHA-256

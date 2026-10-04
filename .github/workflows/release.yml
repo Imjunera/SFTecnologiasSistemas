@@ -83,6 +83,10 @@ jobs:
           npm ci
           npx electron-builder --win portable --x64
 
+      - name: Build System Package
+        run: |
+          .\package-system.ps1 -SkipApi -SkipFrontend -Version "${{ steps.version.outputs.version }}"
+
       - name: Create packages
         run: |
           $version = "${{ steps.version.outputs.version }}"
@@ -147,6 +151,34 @@ jobs:
             mandatory = $false
             releaseNotes = ""
             generatedAt = (Get-Date -Format "yyyy-MM-ddTHH:mm:ssZ")
+          }
+
+          # Sistemas individuais (System Contract): permitem instalar/atualizar
+          # UM sistema sem baixar a plataforma inteira. Presentes quando o build
+          # do sistema (package-system.ps1) roda antes do manifesto.
+          $systemManifests = Get-ChildItem -Path "dist/packages" -Filter "system-manifest-*.json" -ErrorAction SilentlyContinue
+          $systemEntries = @()
+          foreach ($sm in $systemManifests) {
+            $sys = Get-Content $sm.FullName -Raw | ConvertFrom-Json
+            $zip = Get-ChildItem -Path "dist/packages" -Filter "sf-system-$($sys.systemId)-$($sys.version).zip" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (-not $zip) { continue }
+            $zipHash = if ($sys.sha256) { $sys.sha256 } else { (Get-FileHash -Path $zip.FullName -Algorithm SHA256).Hash.ToLowerInvariant() }
+            $systemEntries += @{
+              id = $sys.systemId
+              name = if ($sys.name) { $sys.name } else { $sys.systemId }
+              version = $sys.version
+              minimumPlatformVersion = if ($sys.minimumPlatformVersion) { $sys.minimumPlatformVersion } else { $version }
+              packageUrl = "$baseUrl/$($zip.Name)"
+              sha256 = $zipHash
+              fileName = $zip.Name
+              sizeBytes = $zip.Length
+              required = $false
+              releaseNotes = ""
+            }
+            Copy-Item -Path $zip.FullName -Destination "dist/packages" -Force
+          }
+          if ($systemEntries.Count -gt 0) {
+            $manifest.components.systems = $systemEntries
           }
 
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path "dist/packages/manifest.json"

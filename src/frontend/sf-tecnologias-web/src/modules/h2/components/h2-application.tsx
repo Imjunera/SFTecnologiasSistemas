@@ -34,7 +34,7 @@ export function H2Application({
     clientes: false,
     mesas: false,
   });
-  const [mesaIdAberta, setMesaIdAberta] = useState<number | null>(null);
+  const [mesaAberta, setMesaAberta] = useState<{ id: number; numero: number } | null>(null);
 
   const setCheckoutDirty = useCallback((value: boolean) => {
     setDirty((current) => (current.caixa === value ? current : { ...current, caixa: value }));
@@ -61,8 +61,8 @@ export function H2Application({
     setActive(id);
   }, []);
 
-  const handleAbrirCaixaDaMesa = useCallback((mesaId: number, _mesaNumero: number) => {
-    setMesaIdAberta(mesaId);
+  const handleAbrirCaixaDaMesa = useCallback((mesaId: number, mesaNumero: number) => {
+    setMesaAberta({ id: mesaId, numero: mesaNumero });
     openModule("caixa");
   }, [openModule]);
 
@@ -77,7 +77,7 @@ export function H2Application({
         return next;
       });
       setDirty((current) => ({ ...current, [id]: false }));
-      if (id === "caixa") setMesaIdAberta(null);
+      if (id === "caixa") setMesaAberta(null);
     },
     [dirty],
   );
@@ -177,7 +177,14 @@ export function H2Application({
                 active === id ? "block" : "hidden"
               }`}
             >
-              {id === "caixa" && <CheckoutModule onDirtyChange={setCheckoutDirty} mesaIdInicial={mesaIdAberta} />}
+              {id === "caixa" && (
+                <CheckoutModule
+                  onDirtyChange={setCheckoutDirty}
+                  mesaIdInicial={mesaAberta?.id ?? null}
+                  mesaNumeroInicial={mesaAberta?.numero ?? null}
+                  active={active === "caixa"}
+                />
+              )}
               {id === "categorias" && <CategoriesModule onDirtyChange={setCategoriesDirty} />}
               {id === "produtos" && <ProductsModule onDirtyChange={setProductsDirty} />}
               {id === "clientes" && <CustomersModule onDirtyChange={setCustomersDirty} />}

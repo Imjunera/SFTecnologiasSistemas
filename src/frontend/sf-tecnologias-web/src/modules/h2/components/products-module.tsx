@@ -35,6 +35,7 @@ export function ProductsModule({ onDirtyChange }: { onDirtyChange?: (dirty: bool
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [apenasAtivos, setApenasAtivos] = useState(false);
   const [editingId, setEditingId] = useState<number>();
+  const [editingAtivo, setEditingAtivo] = useState<boolean | undefined>(undefined);
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<DraftProduct>(emptyDraft);
   const [errors, setErrors] = useState<Partial<DraftProduct>>({});
@@ -91,9 +92,12 @@ export function ProductsModule({ onDirtyChange }: { onDirtyChange?: (dirty: bool
   function openNew() {
     setDraft(emptyDraft);
     setEditingId(undefined);
+    setEditingAtivo(undefined);
     setErrors({});
     setApiError(null);
     setFormOpen(true);
+    // Categoria pode ter sido criada agora (em outra aba): recarrega antes de abrir o form.
+    void carregarCategorias();
     onDirtyChange?.(true);
   }
 
@@ -107,9 +111,11 @@ export function ProductsModule({ onDirtyChange }: { onDirtyChange?: (dirty: bool
       categoriaId: prod.categoriaId?.toString() || "",
     });
     setEditingId(prod.id);
+    setEditingAtivo(prod.ativo);
     setErrors({});
     setApiError(null);
     setFormOpen(true);
+    void carregarCategorias();
     onDirtyChange?.(true);
   }
 
@@ -154,7 +160,8 @@ export function ProductsModule({ onDirtyChange }: { onDirtyChange?: (dirty: bool
           codigo: draft.codigo.trim(),
           precoVenda: precoVendaNum,
           precoCusto: precoCustoNum,
-          ativo: true,
+          // Mantém o status atual: editar um produto inativo não pode reativá-lo.
+          ativo: editingAtivo ?? true,
         };
         const res = await HttpService.put<Produto>(`/api/produtos/${editingId}`, { ...payload, categoriaId: categoriaIdNum });
         if (res.success) {

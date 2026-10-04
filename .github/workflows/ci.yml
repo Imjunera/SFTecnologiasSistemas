@@ -1,0 +1,151 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  NODE_VERSION: "20.x"
+
+jobs:
+  test-dotnet:
+    name: Test .NET
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore dependencies
+        run: dotnet restore SF.Tecnologias.sln
+
+      - name: Build
+        run: dotnet build SF.Tecnologias.sln --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test SF.Tecnologias.sln --no-build --configuration Release --logger "trx;LogFileName=test_results.trx"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dotnet-test-results
+          path: **/test_results.trx
+
+  test-node:
+    name: Test Node.js
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies (root)
+        run: npm ci
+
+      - name: Install dependencies (desktop)
+        run: npm ci
+        working-directory: src/desktop
+
+      - name: Install dependencies (frontend)
+        run: npm ci
+        working-directory: src/frontend/sf-tecnologias-web
+
+      - name: Lint frontend
+        run: npm run lint
+        working-directory: src/frontend/sf-tecnologias-web
+
+      - name: Build frontend
+        run: npm run build
+        working-directory: src/frontend/sf-tecnologias-web
+
+  build-desktop:
+    name: Build Desktop (verification)
+    runs-on: windows-latest
+    needs: [test-dotnet, test-node]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Build Backend (API)
+        run: |
+          dotnet publish src/backend/SF.Tecnologias.Api/SF.Tecnologias.Api.csproj `
+            --configuration Release `
+            --self-contained true `
+            --runtime win-x64 `
+            --output dist/api `
+            --nologo
+
+      - name: Build Frontend
+        run: |
+          cd src/frontend/sf-tecnologias-web
+          npm run build
+
+      - name: Build Updater
+        run: |
+          dotnet publish src/updater/SF.Updater/SF.Updater.csproj `
+            --configuration Release `
+            --self-contained true `
+            --runtime win-x64 `
+            --output dist/updater `
+            --nologo
+
+      - name: Build Desktop (Electron) - verify only
+        run: |
+          cd src/desktop
+          npm ci
+          npx electron-builder --win portable --x64 --publish=never
+
+      - name: Build System Package (h2-conveniencia)
+        run: |
+          .\package-system.ps1 -SystemId h2-conveniencia -Name "H2 Conveniencia" -Version 1.0.0-test -PlatformVersion 1.0.0 -SkipApi -SkipFrontend -SkipPackage
+
+      - name: Build System Package (livraria-papelaria-lider)
+        run: |
+          .\package-system.ps1 -SystemId livraria-papelaria-lider -Name "Livraria Papelaria Lider" -Version 1.0.0-test -PlatformVersion 1.0.0 -SkipApi -SkipFrontend -SkipPackage
+
+  validate:
+    name: Validate
+    runs-on: windows-latest
+    needs: [build-desktop]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Validate system packages with SystemValidator
+        run: |
+          # This would run the SystemValidator against the built packages
+          # to ensure they conform to the System Contract
+          dotnet run --project tests/SF.Platform.Tests/SF.Platform.Tests.csproj --filter "FullyQualifiedName~SystemValidatorTests" --no-build --configuration Release

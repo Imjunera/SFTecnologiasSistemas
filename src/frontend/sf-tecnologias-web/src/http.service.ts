@@ -61,12 +61,7 @@ export class HttpService {
           headers: headerObj,
         });
 
-        // Handle 204 No Content (DELETE responses)
-        if (response && response.status === 204) {
-          return { status: 204, data: null, success: true } as ApiResponse<T>;
-        }
-
-        return response as ApiResponse<T>;
+        return HttpService.normalizar<T>(response);
       } else {
         // Direct browser fallback for development
         const baseUrl = "http://localhost:5000";
@@ -78,13 +73,12 @@ export class HttpService {
         });
 
         const resData = await res.json().catch(() => null);
-        return {
+        return HttpService.normalizar<T>({
           status: res.status,
           data: resData,
           success: res.ok,
           message: res.ok ? "Sucesso" : "Erro na requisição",
-          error: res.ok ? undefined : resData?.error || resData?.title || "Erro na requisição",
-        } as ApiResponse<T>;
+        });
       }
     } catch (err: any) {
       return {
@@ -96,5 +90,49 @@ export class HttpService {
         details: err.details ?? null,
       } as ApiResponse<T>;
     }
+  }
+
+  /**
+   * Uniformiza a resposta vinda do IPC (Electron) ou do fetch.
+   *
+   * O processo principal devolve { status, data, success } sem a chave `error` quando a
+   * API responde 4xx/5xx com corpo (ex.: { error: "Ja existe um produto..." }). Sem esta
+   * normalização, cada módulo caía no texto genérico e o operador nunca via o motivo real.
+   * Quando não há mensagem no corpo, `error` fica undefined de propósito: assim cada tela
+   * usa seu próprio fallback (ex.: "Credenciais inválidas.").
+   */
+  private static normalizar<T>(response: any): ApiResponse<T> {
+    if (!response) {
+      return {
+        status: 500,
+        data: null,
+        success: false,
+        error: "Sem resposta do servidor",
+      } as ApiResponse<T>;
+    }
+
+    const status = response.status ?? 500;
+    const success = response.success ?? (status >= 200 && status < 300);
+    const body = response.data ?? null;
+
+    // 204 No Content (DELETE)
+    if (status === 204) {
+      return { status, data: null, success: true } as ApiResponse<T>;
+    }
+
+    let error: string | undefined = response.error;
+    if (!success && !error && typeof body === "object" && body !== null) {
+      const candidato = body.error ?? body.detail ?? body.title ?? body.message;
+      if (typeof candidato === "string" && candidato.trim()) error = candidato;
+    }
+
+    return {
+      status,
+      data: body,
+      success,
+      error,
+      message: response.message,
+      details: response.details ?? null,
+    } as ApiResponse<T>;
   }
 }

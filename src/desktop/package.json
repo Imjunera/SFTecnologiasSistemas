@@ -1,6 +1,6 @@
 {
   "name": "sf-tecnologias-desktop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "SF Tecnologias — cliente desktop BETA",
   "main": "main.js",
   "author": "SF Tecnologias",
@@ -11,7 +11,7 @@
     "dev": "electron .",
     "prod": "cross-env NODE_ENV=production electron .",
     "publish:api": "powershell -ExecutionPolicy Bypass -File ../backend/SF.Tecnologias.Api/publish-self-contained.ps1",
-    "build:beta": "npm run publish:api && npm run build --prefix ../frontend/sf-tecnologias-web && electron-builder --win portable nsis --x64",
+    "build:beta": "npm run publish:api && npm run build --prefix ../frontend/sf-tecnologias-web && powershell -ExecutionPolicy Bypass -File ../../package-system.ps1 -SkipApi -SkipFrontend && electron-builder --win portable nsis --x64",
     "start:api": "dotnet run --project ../backend/SF.Tecnologias.Api/SF.Tecnologias.Api.csproj --environment Development --no-launch-profile --urls http://localhost:5000"
   },
   "keywords": [],
@@ -27,18 +27,26 @@
     "copyright": "Copyright © SF Tecnologias",
     "directories": {
       "output": "../../dist/release"
+    },      "files": [
+        "main.js",
+        "preload.js",
+        "package.json",
+        "version.json"
+      ],
+      "extraFiles": [
+        {
+          "from": "version.json",
+          "to": "version.json"
+        }
+      ],      "extraResources": [
+    {
+      "from": "../frontend/sf-tecnologias-web/dist",
+      "to": "renderer"
     },
-    "files": [
-      "main.js",
-      "preload.js",
-      "package.json",
-      "version.json"
-    ],
-    "extraResources": [
-      {
-        "from": "../frontend/sf-tecnologias-web/dist",
-        "to": "renderer"
-      },
+    {
+      "from": "../../dist/systems",
+      "to": "systems"
+    },
       {
         "from": "../../dist/api",
         "to": "api",

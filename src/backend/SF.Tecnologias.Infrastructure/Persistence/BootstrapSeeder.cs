@@ -2,22 +2,27 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using SF.Tecnologias.Domain;
 
 namespace SF.Tecnologias.Infrastructure.Persistence
 {
     /// <summary>
-    /// Idempotent development seed. Runs only in the Development environment.
-    /// Justification: enables login flow validation (EMPRESA_ID + senha) and
-    /// permission-based module access in local development without manual SQL.
-    /// Safe to run multiple times: each step checks for existing data first.
+    /// Bootstrap idempotente de uma INSTALACAO NOVA (banco sem nenhuma empresa).
+    ///
+    /// Roda em TODOS os ambientes: em Production e a unica forma de existir um primeiro
+    /// acesso (nao existe endpoint nem instalador que crie a primeira empresa/usuário).
+    /// Se ja existe alguma empresa, este metodo nao faz nada — nunca mexe em dado existente.
+    ///
+    /// Credenciais configuraveis via secao "Seed" (ou variaveis de ambiente Seed__*).
     /// </summary>
-    public class DevelopmentSeeder
+    public class BootstrapSeeder
     {
-        public const string EmpresaCodigo = "H2CONV";
-        public const string EmpresaNome = "H2 Conveniência";
-        public const string AdminEmail = "H2CONV";
-        public const string AdminSenha = "H22026";
+        public const string EmpresaCodigoPadrao = "H2CONV";
+        public const string EmpresaNomePadrao = "H2 Conveniência";
+        public const string AdminEmailPadrao = "H2CONV";
+        public const string AdminSenhaPadrao = "H22026";
 
         private static readonly (string Nome, string Descricao)[] Permissoes =
         {
@@ -43,18 +48,53 @@ namespace SF.Tecnologias.Infrastructure.Persistence
         };
 
         private readonly AppDbContext _context;
+        private readonly IConfiguration _configuration;
+        private readonly ILogger<BootstrapSeeder> _logger;
 
-        public DevelopmentSeeder(AppDbContext context)
+        public BootstrapSeeder(AppDbContext context, IConfiguration configuration, ILogger<BootstrapSeeder> logger)
         {
             _context = context;
+            _configuration = configuration;
+            _logger = logger;
         }
 
         public async Task SeedAsync()
         {
+            if (await _context.Empresas.AnyAsync())
+            {
+                _logger.LogDebug("Bootstrap: banco ja possui empresa, nada a fazer.");
+                return;
+            }
+
+            _logger.LogInformation("Bootstrap: banco vazio, criando primeira empresa/usuário de acesso.");
+
+            var senhaPadrao = string.IsNullOrWhiteSpace(_configuration["Seed:AdminSenha"])
+                ? AdminSenhaPadrao
+                : _configuration["Seed:AdminSenha"]!.Trim();
+
+            if (senhaPadrao == AdminSenhaPadrao)
+            {
+                _logger.LogWarning(
+                    "Bootstrap: usando a senha padrao {Senha} para o usuario administrador. " +
+                    "Altere a senha em uso ou defina Seed:AdminSenha (variavel de ambiente Seed__AdminSenha) antes da primeira execucao em producao.",
+                    AdminSenhaPadrao);
+            }
+
             await EnsurePermissoesAsync();
             await EnsureEmpresaAsync();
             await EnsurePerfilAdminAsync();
-            await EnsureUsuarioAdminAsync();
+            await EnsureUsuarioAdminAsync(senhaPadrao);
+
+            _logger.LogInformation(
+                "Bootstrap concluido: empresa {Codigo} e usuario administrador {Email} criados.",
+                Config("Seed:EmpresaCodigo", EmpresaCodigoPadrao),
+                Config("Seed:AdminEmail", AdminEmailPadrao));
+        }
+
+        private string Config(string key, string padrao)
+        {
+            var valor = _configuration[key];
+            return string.IsNullOrWhiteSpace(valor) ? padrao : valor.Trim();
         }
 
         private async Task EnsurePermissoesAsync()
@@ -73,10 +113,11 @@ namespace SF.Tecnologias.Infrastructure.Persistence
 
         private async Task<Empresa> EnsureEmpresaAsync()
         {
-            var empresa = await _context.Empresas.FirstOrDefaultAsync(e => e.Codigo == EmpresaCodigo);
+            var codigo = Config("Seed:EmpresaCodigo", EmpresaCodigoPadrao);
+            var empresa = await _context.Empresas.FirstOrDefaultAsync(e => e.Codigo == codigo);
             if (empresa is null)
             {
-                empresa = new Empresa { Codigo = EmpresaCodigo, Nome = EmpresaNome };
+                empresa = new Empresa { Codigo = codigo, Nome = Config("Seed:EmpresaNome", EmpresaNomePadrao) };
                 _context.Empresas.Add(empresa);
                 await _context.SaveChangesAsync();
             }
@@ -104,24 +145,26 @@ namespace SF.Tecnologias.Infrastructure.Persistence
             return perfil;
         }
 
-        private async Task EnsureUsuarioAdminAsync()
+        private async Task EnsureUsuarioAdminAsync(string senha)
         {
+            var email = Config("Seed:AdminEmail", AdminEmailPadrao);
             var usuario = await _context.Usuarios
                 .Include(u => u.UsuarioEmpresas)
-                .FirstOrDefaultAsync(u => u.Email == AdminEmail);
+                .FirstOrDefaultAsync(u => u.Email == email);
             if (usuario is null)
             {
                 usuario = new Usuario
                 {
                     Nome = "Administrador",
-                    Email = AdminEmail,
-                    SenhaHash = BCrypt.Net.BCrypt.HashPassword(AdminSenha)
+                    Email = email,
+                    SenhaHash = BCrypt.Net.BCrypt.HashPassword(senha)
                 };
                 _context.Usuarios.Add(usuario);
                 await _context.SaveChangesAsync();
             }
 
-            var empresa = await _context.Empresas.SingleAsync(e => e.Codigo == EmpresaCodigo);
+            var empresaCodigo = Config("Seed:EmpresaCodigo", EmpresaCodigoPadrao);
+            var empresa = await _context.Empresas.SingleAsync(e => e.Codigo == empresaCodigo);
             var perfil = await _context.Perfis.SingleAsync(p => p.Nome == "Administrador");
             if (!usuario.UsuarioEmpresas.Any(ue => ue.EmpresaId == empresa.Id))
             {

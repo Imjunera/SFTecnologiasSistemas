@@ -35,7 +35,9 @@ namespace SF.Tecnologias.Application.Services
             if (empresa == null)
                 return null;
 
-            var vinculosQuery = _context.UsuarioEmpresas
+            // Vinculos ativos da empresa: quem tem acesso ao sistema.
+            // Ordem deterministica (UsuarioId) para o resultado nao depender do banco.
+            var candidatos = await _context.UsuarioEmpresas
                 .Include(ue => ue.Usuario)
                 .Include(ue => ue.Empresa)
                 .Include(ue => ue.Perfil)
@@ -44,30 +46,26 @@ namespace SF.Tecnologias.Application.Services
                     ue.EmpresaId == empresa.Id &&
                     ue.Ativo &&
                     ue.Empresa.Ativo &&
-                    ue.Usuario.Ativo);
+                    ue.Usuario.Ativo)
+                .OrderBy(ue => ue.UsuarioId)
+                .ToListAsync();
 
-            UsuarioEmpresa? usuarioEmpresa;
-            if (!string.IsNullOrWhiteSpace(request.Email))
+            if (candidatos.Count == 0)
+                return null;
+
+            // Login sem e-mail: a identidade do usuario e o vinculo cuja senha confere.
+            // A senha continua sendo verificada por BCrypt contra o hash armazenado.
+            UsuarioEmpresa? usuarioEmpresa = null;
+            foreach (var candidato in candidatos)
             {
-                var email = request.Email.Trim().ToLower();
-                usuarioEmpresa = await vinculosQuery
-                    .FirstOrDefaultAsync(ue => ue.Usuario.Email.ToLower() == email);
-                if (usuarioEmpresa == null)
-                    return null;
-            }
-            else
-            {
-                var candidatos = await vinculosQuery.ToListAsync();
-                if (candidatos.Count == 0)
-                    return null;
-                if (candidatos.Count > 1)
-                    throw new ArgumentException(
-                        "Multiplas contas ativas nesta empresa. Informe o e-mail do usuario para continuar.");
-                usuarioEmpresa = candidatos[0];
+                if (SenhaConfere(request.Senha, candidato.Usuario.SenhaHash))
+                {
+                    usuarioEmpresa = candidato;
+                    break;
+                }
             }
 
-            // Verify password
-            if (!BCrypt.Net.BCrypt.Verify(request.Senha, usuarioEmpresa.Usuario.SenhaHash))
+            if (usuarioEmpresa == null)
                 return null;
 
             // Generate JWT token
@@ -85,6 +83,25 @@ namespace SF.Tecnologias.Application.Services
             };
         }
 
+        /// <summary>
+        /// Verifica a senha contra um hash BCrypt. Hash corrompido/ilegivel nao derruba o login
+        /// (apenas nao confere), para que um registro invalido nao resulte em 500 para todos.
+        /// </summary>
+        private static bool SenhaConfere(string senha, string? senhaHash)
+        {
+            if (string.IsNullOrWhiteSpace(senhaHash))
+                return false;
+
+            try
+            {
+                return BCrypt.Net.BCrypt.Verify(senha, senhaHash);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         private string GenerateToken(Usuario usuario, UsuarioEmpresa usuarioEmpresa)
         {
             var jwtSettings = _configuration.GetSection("Jwt");
@@ -97,7 +114,9 @@ namespace SF.Tecnologias.Application.Services
             var claims = new[]
             {
                 new Claim(JwtRegisteredClaimNames.Sub, usuario.Id.ToString()),
+                // Identificador da conta (coluna Usuario.Email). Nao e pedido no login.
                 new Claim(JwtRegisteredClaimNames.Email, usuario.Email),
+                new Claim("usuario_login", usuario.Email),
                 new Claim("empresa_id", usuarioEmpresa.EmpresaId.ToString()),
                 new Claim("usuario_nome", usuario.Nome),
                 new Claim("empresa_nome", usuarioEmpresa.Empresa.Nome ?? string.Empty)

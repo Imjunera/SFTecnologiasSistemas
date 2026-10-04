@@ -18,8 +18,12 @@ builder.Host.UseWindowsService(options =>
     options.ServiceName = "SFTecnologiasApi";
 });
 
-// Configure Kestrel to listen on port 5000
-builder.WebHost.UseUrls("http://localhost:5000");
+// Configure Kestrel: porta 5000 por padrao, mas ASPNETCORE_URLS tem precedencia
+// (o contrato de instalacao documenta a variavel como suportada e o desktop/servico ja a enviam).
+if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_URLS")))
+{
+    builder.WebHost.UseUrls("http://localhost:5000");
+}
 
 // Add services to the container.
 builder.Services.AddEndpointsApiExplorer();
@@ -28,6 +32,14 @@ builder.Services.AddSwaggerGen();
 // Add DbContext (supports both PostgreSQL and SQLite)
 var dbProvider = builder.Configuration.GetValue<string>("DatabaseProvider") ?? "SQLite";
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+// Fase 1 (Platform/System/Data): na primeira execucao com o layout por sistema,
+// copia o banco legado (data/SFTecnologias.db) para Data/<systemId>/database.sqlite.
+// Copia, nunca move; o legado permanece como fallback.
+if (dbProvider.Equals("SQLite", StringComparison.OrdinalIgnoreCase))
+{
+    SF.Tecnologias.Infrastructure.Persistence.SqliteLegacyMigrator.MigrateLegacyDatabaseIfApplicable(connectionString);
+}
 
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
@@ -47,7 +59,7 @@ builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<ITenantProvider, TenantProvider>();
 
 // Development seed (idempotent, Development environment only)
-builder.Services.AddScoped<DevelopmentSeeder>();
+builder.Services.AddScoped<BootstrapSeeder>();
 
 // Add application services
 builder.Services.AddScoped<IAuthService, AuthService>();
@@ -56,6 +68,7 @@ builder.Services.AddScoped<ICategoriaService, CategoriaService>();
 builder.Services.AddScoped<IClienteService, ClienteService>();
 builder.Services.AddScoped<IMesaService, MesaService>();
 builder.Services.AddScoped<ICaixaService, CaixaService>();
+builder.Services.AddScoped<IVendaService, VendaService>();
 
 // Add authentication
 var jwtSettings = builder.Configuration.GetSection("Jwt");
@@ -142,6 +155,10 @@ using (var scope = app.Services.CreateScope())
     {
         // SQLite: Use EnsureCreated for simplicity in desktop distribution
         await db.Database.EnsureCreatedAsync();
+
+        // EnsureCreated nao altera banco ja existente: garante as tabelas do modelo atual
+        // (ex.: Vendas/VendaItens em instalacoes antigas) sem tocar no que ja existe.
+        await SqliteSchemaBootstrap.EnsureModelTablesAsync(db);
     }
     else
     {
@@ -149,11 +166,10 @@ using (var scope = app.Services.CreateScope())
         await db.Database.MigrateAsync();
     }
 
-    if (app.Environment.IsDevelopment())
-    {
-        var seeder = scope.ServiceProvider.GetRequiredService<DevelopmentSeeder>();
-        await seeder.SeedAsync();
-    }
+    // Bootstrap idempotente: cria a primeira empresa/usuário apenas quando o banco esta vazio.
+    // Necessario em TODOS os ambientes — sem ele uma instalacao nova nunca consegue logar.
+    var seeder = scope.ServiceProvider.GetRequiredService<BootstrapSeeder>();
+    await seeder.SeedAsync();
 }
 
 // Configure the HTTP request pipeline.
@@ -481,11 +497,15 @@ mesasApi.MapDelete("/{id:int}/permanente", async (IMesaService service, int id) 
 // CAIXA ENDPOINTS
 // ============================================================
 
-var caixaApi = app.MapGroup("/api/caixa");
+var caixaApi = app.MapGroup("/api/caixa").RequireAuthorization();
 
-caixaApi.MapGet("/sessao-atual", async (ICaixaService service) =>
-{
+caixaApi.MapGet("/sessao-atual", async (ICaixaService service) => {
     try { var s = await service.ObterSessaoAbertaAsync(); return s is not null ? Results.Ok(s) : Results.NotFound(); }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+});
+
+caixaApi.MapGet("/resumo", async (ICaixaService service) => {
+    try { var r = await service.ObterResumoAsync(); return r is not null ? Results.Ok(r) : Results.NotFound(); }
     catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
 });
 
@@ -503,6 +523,47 @@ caixaApi.MapPost("/fechar/{id:int}", async (ICaixaService service, int id, Fecha
     catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
     catch (KeyNotFoundException) { return Results.NotFound(); }
     catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+    catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
+});
+
+// ============================================================
+// VENDAS ENDPOINTS
+// ============================================================
+
+var vendasApi = app.MapGroup("/api/vendas").RequireAuthorization();
+
+vendasApi.MapGet("/", async (IVendaService service, [FromQuery] DateTime? dataInicio, [FromQuery] DateTime? dataFim, [FromQuery] int? sessaoId) =>
+{
+    try { return Results.Ok(await service.ObterTodasAsync(dataInicio, dataFim, sessaoId)); }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+});
+
+vendasApi.MapGet("/{id:int}", async (IVendaService service, int id) =>
+{
+    try { var v = await service.ObterPorIdAsync(id); return v is not null ? Results.Ok(v) : Results.NotFound(); }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+});
+
+vendasApi.MapPost("/", async (IVendaService service, CriarVendaRequest request) =>
+{
+    try { var v = await service.CriarAsync(request); return Results.Created($"/api/vendas/{v.Id}", v); }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+    catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
+});
+
+vendasApi.MapPut("/{id:int}", async (IVendaService service, int id, AtualizarVendaRequest request) =>
+{
+    try { return Results.Ok(await service.AtualizarAsync(id, request)); }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
+    catch (KeyNotFoundException) { return Results.NotFound(); }
+    catch (ArgumentException ex) { return Results.BadRequest(new { error = ex.Message }); }
+});
+
+vendasApi.MapDelete("/{id:int}", async (IVendaService service, int id) =>
+{
+    try { return await service.ExcluirAsync(id) ? Results.NoContent() : Results.NotFound(); }
+    catch (UnauthorizedAccessException) { return Results.Unauthorized(); }
     catch (InvalidOperationException ex) { return Results.Conflict(new { error = ex.Message }); }
 });
 

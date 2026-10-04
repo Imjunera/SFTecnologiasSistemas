@@ -62,6 +62,7 @@ export function CustomersModule({ onDirtyChange }: { onDirtyChange?: (dirty: boo
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [apenasAtivos, setApenasAtivos] = useState(false);
   const [editingId, setEditingId] = useState<number>();
+  const [editingAtivo, setEditingAtivo] = useState<boolean | undefined>(undefined);
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<DraftCliente>(emptyDraft);
   const [errors, setErrors] = useState<Partial<DraftCliente>>({});
@@ -103,6 +104,7 @@ export function CustomersModule({ onDirtyChange }: { onDirtyChange?: (dirty: boo
   function openNew() {
     setDraft(emptyDraft);
     setEditingId(undefined);
+    setEditingAtivo(undefined);
     setErrors({});
     setApiError(null);
     setFormOpen(true);
@@ -119,6 +121,7 @@ export function CustomersModule({ onDirtyChange }: { onDirtyChange?: (dirty: boo
       observacoes: cliente.observacoes || "",
     });
     setEditingId(cliente.id);
+    setEditingAtivo(cliente.ativo);
     setErrors({});
     setApiError(null);
     setFormOpen(true);
@@ -157,7 +160,8 @@ export function CustomersModule({ onDirtyChange }: { onDirtyChange?: (dirty: boo
           email: draft.email.trim() || null,
           endereco: draft.endereco.trim() || null,
           observacoes: draft.observacoes.trim() || null,
-          ativo: true,
+          // Mantém o status atual: editar um cliente inativo não pode reativá-lo.
+          ativo: editingAtivo ?? true,
         };
         const res = await HttpService.put<Cliente>(`/api/clientes/${editingId}`, payload);
         if (res.success) {

@@ -53,11 +53,11 @@ graphify-out/
 # ----- SF Tecnologias agents (dev tools only) -----
 SF Tecnologias/.agents/
 
-# ----- Test artifacts -----
-test*.txt
-update-packages/
-real-update-test/
-test-update/
+# ----- Auditoria local (copias de banco de PRODUCAO — nunca versionar) -----
+.audit/
+
+# ----- Ferramentas de agente (estado local) -----
+.freebuff/
 
 # ----- Environment / secrets -----
 .env
@@ -66,7 +66,10 @@ test-update/
 appsettings.Development.json
 appsettings.Local.json
 
-# ----- Root-level test/legacy files -----
-index.html
-main.js
+# ----- Root-level test/legacy files (apenas na raiz) -----
+# IMPORTANTE: sem a barra no inicio, "main.js"/"index.html" tambem ignoravam
+# src/desktop/main.js, src/desktop/index.html e o index.html do Vite,
+# deixando essas fontes fora do repositorio e quebrando o build em clone limpo.
+/index.html
+/main.js
 prompot.txt

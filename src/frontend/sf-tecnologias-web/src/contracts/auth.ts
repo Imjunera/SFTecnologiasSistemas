@@ -1,7 +1,6 @@
 export interface LoginRequest {
   empresaCodigo: string;
   senha: string;
-  email?: string;
 }
 
 export interface LoginResponse {

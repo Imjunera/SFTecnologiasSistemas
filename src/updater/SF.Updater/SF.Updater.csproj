@@ -9,6 +9,11 @@
     <RootNamespace>SF.Updater</RootNamespace>
   </PropertyGroup>
 
+  <!-- System Contract compartilhado (mesmas regras usadas pela plataforma) -->
+  <ItemGroup>
+    <ProjectReference Include="..\..\platform\SF.Platform.Contract\SF.Platform.Contract.csproj" />
+  </ItemGroup>
+
   <!-- Self-contained publish settings -->
   <PropertyGroup>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>

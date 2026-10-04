@@ -6,12 +6,12 @@ contextBridge.exposeInMainWorld("api", {
   request: async (options) => {
     return ipcRenderer.invoke("http-request", options);
   },
-  // Login
-  login: async (empresaCodigo, senha, email) => {
+  // Login (empresa + senha; nao existe mais campo de e-mail)
+  login: async (empresaCodigo, senha) => {
     const response = await ipcRenderer.invoke("http-request", {
       method: "POST",
       url: "/api/auth/login",
-      data: { empresaCodigo, senha, email: email || undefined },
+      data: { empresaCodigo, senha },
     });
     if (response.status === 200 && response.data?.accessToken) {
       await ipcRenderer.invoke("set-token", response.data.accessToken);
@@ -44,6 +44,16 @@ contextBridge.exposeInMainWorld("api", {
   // Get current version
   getVersion: async () => {
     return await ipcRenderer.invoke("get-version");
+  },
+  // Sistemas individuais (Fase 3/4)
+  listSystems: async (includeRelease = true) => {
+    return await ipcRenderer.invoke("list-systems", includeRelease);
+  },
+  checkSystemUpdate: async (systemId) => {
+    return await ipcRenderer.invoke("check-system-update", systemId);
+  },
+  installSystem: async (systemId) => {
+    return await ipcRenderer.invoke("install-system", systemId);
   },
   // Listen for update notifications
   onUpdateAvailable: (callback) => {

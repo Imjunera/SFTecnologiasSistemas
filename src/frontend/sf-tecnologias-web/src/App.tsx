@@ -65,20 +65,18 @@ export const App: React.FC = () => {
   }, []);
 
   const handleLogin = useCallback(
-    async (empresaCodigo: string, senha: string, email?: string): Promise<string | null> => {
+    async (empresaCodigo: string, senha: string): Promise<string | null> => {
       try {
         let response: LoginResponse | undefined;
         if ((window as any).api?.login) {
           response = (await (window as any).api.login(
             empresaCodigo,
-            senha,
-            email
+            senha
           )) as LoginResponse;
         } else {
           const result = await HttpService.post<LoginResponse>("/api/auth/login", {
             empresaCodigo,
             senha,
-            email: email || undefined,
           });
           if (result.success && result.data?.accessToken) {
             sessionStorage.setItem("sf-access-token", result.data.accessToken);
@@ -171,11 +169,10 @@ export const App: React.FC = () => {
 };
 
 const LoginForm: React.FC<{
-  onLogin: (empresaCodigo: string, senha: string, email?: string) => Promise<string | null>;
+  onLogin: (empresaCodigo: string, senha: string) => Promise<string | null>;
 }> = ({ onLogin }) => {
   const [empresaCodigo, setEmpresaCodigo] = useState("");
   const [senha, setSenha] = useState("");
-  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -184,7 +181,7 @@ const LoginForm: React.FC<{
     setError(null);
     setLoading(true);
     try {
-      const errorMsg = await onLogin(empresaCodigo, senha, email.trim() || undefined);
+      const errorMsg = await onLogin(empresaCodigo, senha);
       if (errorMsg) {
         setError(errorMsg);
       }
@@ -229,23 +226,6 @@ const LoginForm: React.FC<{
           onChange={(e) => setSenha(e.target.value)}
           placeholder="••••••••"
           required
-          disabled={loading}
-          className="h-10 w-full rounded border border-[#d1d5db] bg-white px-3 text-sm text-[#1a1a2e] placeholder:text-[#9ca3af] focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
-        />
-      </div>
-      <div>
-        <label
-          className="mb-1 block text-xs font-semibold uppercase tracking-wide text-[#374151]"
-          htmlFor="email"
-        >
-          E-mail (se houver mais de um usuário)
-        </label>
-        <input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="opcional"
           disabled={loading}
           className="h-10 w-full rounded border border-[#d1d5db] bg-white px-3 text-sm text-[#1a1a2e] placeholder:text-[#9ca3af] focus:border-[#1e3a5f] focus:outline-none focus:ring-1 focus:ring-[#1e3a5f]"
         />

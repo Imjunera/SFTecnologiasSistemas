@@ -360,7 +360,7 @@ if (Test-Path $updaterExe) {
     }
     $validations2 += @{ Name = "Real updater: exit code 0"; Pass = $exitCode -eq 0 }
 
-    $stateFile = Join-Path (Join-Path $env:ProgramData "SF Tecnologias") "config\updater-state.json"
+    $stateFile = Join-Path (Split-Path $dataDir -Parent) "config\updater-state.json"
     if (Test-Path $stateFile) {
         $st = Get-Content $stateFile | ConvertFrom-Json
         $validations2 += @{ Name = "Real updater: state Completed"; Pass = $st.Status -eq "Completed" }

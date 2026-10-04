@@ -25,6 +25,7 @@ export function CategoriesModule({ onDirtyChange }: { onDirtyChange?: (dirty: bo
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [apenasAtivos, setApenasAtivos] = useState(false);
   const [editingId, setEditingId] = useState<number>();
+  const [editingAtivo, setEditingAtivo] = useState<boolean | undefined>(undefined);
   const [formOpen, setFormOpen] = useState(false);
   const [draft, setDraft] = useState<DraftCategoria>(emptyDraft);
   const [errors, setErrors] = useState<Partial<DraftCategoria>>({});
@@ -66,6 +67,7 @@ export function CategoriesModule({ onDirtyChange }: { onDirtyChange?: (dirty: bo
   function openNew() {
     setDraft(emptyDraft);
     setEditingId(undefined);
+    setEditingAtivo(undefined);
     setErrors({});
     setApiError(null);
     setFormOpen(true);
@@ -79,6 +81,7 @@ export function CategoriesModule({ onDirtyChange }: { onDirtyChange?: (dirty: bo
       ordem: cat.ordem?.toString() || "",
     });
     setEditingId(cat.id);
+    setEditingAtivo(cat.ativo);
     setErrors({});
     setApiError(null);
     setFormOpen(true);
@@ -116,7 +119,8 @@ export function CategoriesModule({ onDirtyChange }: { onDirtyChange?: (dirty: bo
           nome: draft.nome.trim(),
           descricao: draft.descricao.trim() || null,
           ordem: ordemNum,
-          ativo: true,
+          // Mantém o status atual: editar uma categoria inativa não pode reativá-la.
+          ativo: editingAtivo ?? true,
         };
         const res = await HttpService.put<Categoria>(`/api/categorias/${editingId}`, payload);
         if (res.success) {

@@ -157,6 +157,57 @@ if ($updaterPackage) {
 }
 
 # ============================================
+# SISTEMAS INDIVIDUAIS (System Contract)
+# ============================================
+# dist/packages/system-manifest-<id>-<versao>.json vem do package-system.ps1.
+# A release publica a entrada do sistema para que a plataforma consiga instalar/
+# atualizar UM sistema sem baixar a plataforma inteira.
+$systemManifestFiles = Get-ChildItem -Path $packagesPath -Filter "system-manifest-*.json" -ErrorAction SilentlyContinue
+$systemEntries = @()
+$systemAssetFiles = @()
+$systemHashLines = @()
+
+foreach ($systemManifestFile in $systemManifestFiles) {
+    $systemManifest = Get-Content -Path $systemManifestFile.FullName -Raw | ConvertFrom-Json
+    $systemId = $systemManifest.systemId
+    $systemVersion = $systemManifest.version
+
+    $systemPackage = Get-ChildItem -Path $packagesPath -Filter "sf-system-$systemId-$systemVersion.zip" -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+
+    if (-not $systemPackage) {
+        Write-Host "  AVISO: pacote do sistema $systemId v$systemVersion nao encontrado (manifesto ignorado)" -ForegroundColor Yellow
+        continue
+    }
+
+    $systemHash = if ($systemManifest.sha256) { $systemManifest.sha256 } else { Get-FileSha256 -FilePath $systemPackage.FullName }
+    $systemUrl = "$baseUrl/$($systemPackage.Name)"
+
+    $entry = [ordered]@{
+        id                     = $systemId
+        name                   = if ($systemManifest.name) { $systemManifest.name } else { $systemId }
+        version                = $systemVersion
+        minimumPlatformVersion = if ($systemManifest.minimumPlatformVersion) { $systemManifest.minimumPlatformVersion } else { $Version }
+        packageUrl             = $systemUrl
+        sha256                 = $systemHash
+        fileName               = $systemPackage.Name
+        sizeBytes              = $systemPackage.Length
+        required               = $false
+        releaseNotes           = if ($systemManifest.releaseNotes) { $systemManifest.releaseNotes } else { "" }
+    }
+
+    $systemEntries += $entry
+    $systemAssetFiles += $systemPackage.FullName
+    $systemHashLines += "$systemHash  $($systemPackage.Name)"
+    Show-Ok "Sistema no release: $systemId v$systemVersion"
+}
+
+if ($systemEntries.Count -gt 0) {
+    $manifest.components.systems = $systemEntries
+    Show-Ok "$($systemEntries.Count) sistema(s) adicionados ao manifesto"
+}
+
+# ============================================
 # SALVAR MANIFESTO
 # ============================================
 Show-Step (++$step) $totalSteps "Salvando manifesto..."
@@ -168,10 +219,13 @@ $manifestFile = Join-Path $outputPath "manifest-$Version.json"
 $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $manifestFile -Encoding UTF8
 Show-Ok "Manifesto salvo: $manifestFile"
 
-# Also save as latest
+# Also save as latest + manifest.json (nome padrao consumido pelo instalador online e pelo CI)
 $latestFile = Join-Path $outputPath "manifest-latest.json"
 $manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $latestFile -Encoding UTF8
 Show-Ok "Manifesto latest: $latestFile"
+$plainFile = Join-Path $outputPath "manifest.json"
+$manifest | ConvertTo-Json -Depth 10 | Set-Content -Path $plainFile -Encoding UTF8
+Show-Ok "Manifesto (asset padrao): $plainFile"
 
 # Copy packages to release assets
 if ($desktopPackage) {
@@ -185,6 +239,10 @@ if ($apiPackage) {
 if ($updaterPackage) {
     Copy-Item -Path $updaterPackage.FullName -Destination $outputPath -Force
     Show-Ok "Pacote Updater copiado para $outputPath"
+}
+foreach ($systemAsset in $systemAssetFiles) {
+    Copy-Item -Path $systemAsset -Destination $outputPath -Force
+    Show-Ok "Pacote de sistema copiado: $(Split-Path $systemAsset -Leaf)"
 }
 
 # ============================================
@@ -204,6 +262,7 @@ if ($apiPackage) {
 if ($updaterPackage) {
     $hashContent += "$updaterHash  $($updaterPackage.Name)"
 }
+$hashContent += $systemHashLines
 
 $hashContent | Set-Content -Path $hashFile -Encoding UTF8
 Show-Ok "SHA256SUMS salvo: $hashFile"

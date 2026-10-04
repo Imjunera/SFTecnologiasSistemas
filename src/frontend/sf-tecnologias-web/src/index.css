@@ -63,3 +63,104 @@ body,
   margin: 0;
   padding: 0;
 }
+
+/* ============================================
+   Animações da tela de atualização (UpdateNotification)
+   ============================================ */
+@keyframes sf-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes sf-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sf-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes sf-shimmer {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(320%); }
+}
+
+@keyframes sf-orbit {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes sf-orbit-back {
+  to { transform: rotate(-360deg); }
+}
+
+@keyframes sf-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 oklch(0.49 0.19 27 / 40%);
+  }
+  70% {
+    box-shadow: 0 0 0 9px oklch(0.49 0.19 27 / 0%);
+  }
+  100% {
+    box-shadow: 0 0 0 0 oklch(0.49 0.19 27 / 0%);
+  }
+}
+
+.sf-fade-in {
+  animation: sf-fade-in 0.2s ease-out both;
+}
+
+.sf-modal-in {
+  animation: sf-modal-in 0.32s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.sf-toast-in {
+  animation: sf-toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.sf-shimmer {
+  animation: sf-shimmer 1.4s ease-in-out infinite;
+}
+
+.sf-orbit {
+  animation: sf-orbit 1.6s linear infinite;
+}
+
+.sf-orbit-back {
+  animation: sf-orbit-back 2.4s linear infinite;
+}
+
+.sf-pulse-ring {
+  animation: sf-pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.sf-glow {
+  box-shadow:
+    0 10px 24px -8px oklch(0.55 0.16 35 / 55%),
+    0 0 0 1px oklch(0.55 0.16 35 / 20%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sf-fade-in,
+  .sf-modal-in,
+  .sf-toast-in,
+  .sf-shimmer,
+  .sf-orbit,
+  .sf-orbit-back,
+  .sf-pulse-ring {
+    animation: none !important;
+  }
+}
